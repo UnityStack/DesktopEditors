@@ -189,7 +189,10 @@ One-time Azure setup:
 1. An Entra ID app registration (its client ID is `AZURE_CLIENT_ID`) with a
    federated credential for GitHub Actions: repository
    `UnityStack/DesktopEditors`, entity type *Environment*, environment
-   `signing` (subject `repo:UnityStack/DesktopEditors:environment:signing`).
+   `signing`. The repository uses GitHub's immutable subject format, so the
+   subject is
+   `repo:UnityStack@206505972/DesktopEditors@1442484805:environment:signing`
+   (organization ID 206505972, repository ID 1442484805).
 2. The role **Artifact Signing Certificate Profile Signer** for that app on the
    `unitystack` certificate profile (or the `unitystackcodesign` account).
 3. The `signing` environment in the GitHub repository settings, ideally
