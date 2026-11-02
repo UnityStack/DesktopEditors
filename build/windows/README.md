@@ -100,16 +100,18 @@ then at `<RepoRoot>\desktopeditors`.
 
 ## Code signing
 
-Only **Nextcloud Office** is signed. **Euro-Office** is packaged unsigned on
-CI and published to the GitHub release as-is. Which brand gets signed is set
-by `sign:` in the `build-windows` matrix.
+Which brand gets signed is set by `sign:` in the `build-windows` matrix. In
+this fork that is **Euro-Office**, signed in CI on tag builds (see
+[Signing in CI (fork)](#signing-in-ci-fork)); branch and PR builds stay
+unsigned.
 
-The signing certificate lives on a separate signing server. The installer must
-be built from signed binaries and is itself signed, so for these brands CI
-builds no packages at all and the server does all packaging:
+Upstream, the signing certificate lives on a separate signing server (in this
+fork the `sign-windows` job takes its place). The installer must be built from
+signed binaries and is itself signed, so for these brands CI builds no packages
+at all and the server does all packaging:
 
-1. For brands with `sign: true`, CI runs `build.ps1 -SkipPackaging
-   -SigningBundle ...` and uploads `windows-signing-bundle-<brand>-<arch>`
+1. For brands with `sign: true` (in this fork: on tag builds only), CI runs
+   `build.ps1 -SkipPackaging -SigningBundle ...` and uploads `windows-signing-bundle-<brand>-<arch>`
    instead of `windows-packages-<brand>-<arch>`. It is a tar holding the install tree
    (`desktopeditors\`), the `desktop-apps` packaging scripts and Inno project,
    the VC++ redistributable, and a `signing-bundle.json` manifest (version, arch,
@@ -159,6 +161,39 @@ the script elevated, or run it once elevated to stage those files.
 regenerates the cache after signing and then removes the tool. It can only do
 that on a host with the same architecture, so on an x64 server arm64 builds
 keep the tool and have no cache (upstream behaves the same way).
+
+### Signing in CI (fork)
+
+On tag pushes the `sign-windows` job in `.github/workflows/build.yml` takes
+the place of the signing server. Per arch it downloads
+`windows-signing-bundle-euro-office-<arch>`, logs in to Azure with OIDC
+(`azure/login`), installs the Artifact Signing client (NuGet
+`Microsoft.ArtifactSigning.Client`) and runs `sign-package.ps1 -BundlePath
+... -SignArgs /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256
+/dlib <dlib> /dmdf <metadata.json>`. The signed ZIP, EXE and a
+`SHA256SUMS-windows-<arch>.txt` are uploaded as
+`windows-packages-euro-office-<arch>`, which `publish-release` attaches to the
+GitHub release. The certificate is UnityStack GmbH's public-trust profile.
+
+The job runs in the GitHub environment **`signing`** and needs:
+
+- Secrets (repository or `signing` environment): `AZURE_CLIENT_ID`,
+  `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`.
+- Variables (optional, defaults in the workflow `env`):
+  `ARTIFACT_SIGNING_ENDPOINT` (`https://neu.codesigning.azure.net`),
+  `ARTIFACT_SIGNING_ACCOUNT` (`unitystackcodesign`),
+  `ARTIFACT_SIGNING_PROFILE` (`unitystack`).
+
+One-time Azure setup:
+
+1. An Entra ID app registration (its client ID is `AZURE_CLIENT_ID`) with a
+   federated credential for GitHub Actions: repository
+   `UnityStack/DesktopEditors`, entity type *Environment*, environment
+   `signing` (subject `repo:UnityStack/DesktopEditors:environment:signing`).
+2. The role **Artifact Signing Certificate Profile Signer** for that app on the
+   `unitystack` certificate profile (or the `unitystackcodesign` account).
+3. The `signing` environment in the GitHub repository settings, ideally
+   restricted to tags (`v*`).
 
 ## Good to know
 

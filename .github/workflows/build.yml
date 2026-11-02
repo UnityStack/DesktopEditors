@@ -6,9 +6,9 @@ on:
       - main
     tags:
       - '**'
-  # PRs are expected from same-repo branches only. A fork PR gets a read-only
-  # GITHUB_TOKEN and no secrets, so EURO_OFFICE_MIRROR_TOKEN (required to fetch
-  # the private submodules + the brand repo) is empty and the build hard-fails.
+  # All submodules are public, so the default GITHUB_TOKEN checks them out.
+  # PRs are still expected from same-repo branches: a fork PR gets a read-only
+  # GITHUB_TOKEN, so the ghcr.io build-cache pushes (cache-to) are refused.
   pull_request:
   workflow_dispatch:
 
@@ -17,19 +17,25 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  REGISTRY: ghcr.io/euro-office
+  REGISTRY: ghcr.io/unitystack
   CACHE_IMAGE_NAME: desktopeditors-build-cache
   BUILD_NUMBER: dev.1
   BUILD_ROOT: /package
+  # Azure Artifact Signing (sign-windows). Repository variables override these.
+  ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT || 'https://neu.codesigning.azure.net' }}
+  ARTIFACT_SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT || 'unitystackcodesign' }}
+  ARTIFACT_SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE || 'unitystack' }}
+  ARTIFACT_SIGNING_CLIENT_VERSION: 1.0.146   # NuGet Microsoft.ArtifactSigning.Client
 
 # ─────────────────────────────────────────────────────────────
 # BRANDING
 #
-# Same mechanism as DocumentServer: the brand repo is checked out
-# into build/brands/nextcloud-office-brand (inside the docker build
-# context, which is the repo root for every bake target here), and
-# the bake graph is told about it through three variables that the
-# existing docker-bake.hcl files already declare:
+# This fork builds only the euro-office brand. Same mechanism as
+# DocumentServer: a brand repo can be checked out into
+# build/brands/<brand> (inside the docker build context, which is the
+# repo root for every bake target here), and the bake graph is told
+# about it through three variables that the existing docker-bake.hcl
+# files already declare:
 #
 #   BRANDING_DIR   path (relative to the repo root) whose
 #                  desktop-apps/package/ tree is overlaid on top of
@@ -59,7 +65,6 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: false
-          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
 
       - name: Compute version
         id: meta
@@ -139,10 +144,7 @@ jobs:
             extra_bake_files: ""
             cache_prefix: ""
             expect_assets: false          # dummy target: empty overlay by design
-          - name: nextcloud-office
-            extra_bake_files: "./brands/nextcloud-office-brand/brand-desktop.hcl"
-            cache_prefix: "nextcloud-office-"
-            expect_assets: true
+            # TODO(app icon): a brand-desktop.hcl overriding brand-icons goes here.
     steps:
       - name: Checkout DesktopEditors repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -151,14 +153,6 @@ jobs:
           # The render container's context is the brand repo, not the monorepo,
           # so the multi-GB submodules are pure cost here.
           submodules: false
-          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
-
-      - name: Checkout nextcloud-office-brand repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: Euro-Office/nextcloud-office-brand
-          path: build/brands/nextcloud-office-brand
-          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
@@ -237,24 +231,12 @@ jobs:
             extra_bake_files_common: ""
             extra_targets_common: ""
             cache_prefix: ""
-          - name: nextcloud-office
-            image_name: no-desktop-common
-            company_name: Nextcloud Office
-            product_name: Nextcloud Office
-            # Relative to the bake context (`..` from workdir ./build) = repo root.
-            branding_dir: "./build/brands/nextcloud-office-brand"
-            # Relative to workdir ./build. Leave empty until the brand repo
-            # ships a desktop bake file.
-            extra_bake_files_common: ""
-            extra_targets_common: ""
-            cache_prefix: "nextcloud-office-"
     steps:
       - name: Checkout fork repository (with submodules)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: .
           submodules: recursive
-          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
 
       - name: Record build commits
         shell: bash
@@ -262,20 +244,12 @@ jobs:
           echo "BUILD_COMMITS=DesktopEditors=$(git rev-parse HEAD) $(git submodule foreach --quiet 'echo $name=$(git rev-parse HEAD)' | tr '\n' ' ')" >> "$GITHUB_ENV"
           echo "BUILD_DATE=$(date -u +%F)" >> "$GITHUB_ENV"
 
-      - name: Checkout nextcloud-office-brand repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: Euro-Office/nextcloud-office-brand
-          path: build/brands/nextcloud-office-brand
-          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
-
       - name: Debug workspace
         run: |
           echo "workspace: ${{ github.workspace }}"
           echo "brand:     ${{ matrix.brand.name }}"
           ls -la "${{ github.workspace }}"
           ls -la "${{ github.workspace }}/build" || echo "build/ MISSING"
-          ls -la "${{ github.workspace }}/build/brands/nextcloud-office-brand" || echo "brand/ MISSING"
 
       - name: Set up Docker Buildx
         id: buildx
@@ -368,8 +342,6 @@ jobs:
           COMPANY_NAME: ${{ matrix.brand.company_name }}
           PRODUCT_NAME: ${{ matrix.brand.product_name }}
           # ------------------
-          NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
-          NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -383,21 +355,23 @@ jobs:
   #
   # V8/OpenSSL for Windows arm64 contain no branding, so this job
   # deliberately stays outside the brand matrix and is shared.
+  #
+  # ensure_dep uses the public S3 remote cache (REMOTE_CACHE_TYPE=s3,
+  # the default). Without REMOTE_CACHE_S3_* upload keys it is
+  # download-only: a cache hit is fetched, a miss is built here and
+  # not uploaded.
   # ─────────────────────────────────────────────────────────────
   crosscompile-3rdparty-arm64:
     runs-on: windows-2022 # x64 host that cross-compiles to arm64
     env:
       PYTHONUTF8: "1"
       DEPOT_TOOLS_WIN_TOOLCHAIN: "0" # V8: use the locally installed VS, not Google's toolchain
-      NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }} # required: ensure_dep uploads here
-      NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
     steps:
       - name: Checkout fork repository (with submodules)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: .
           submodules: recursive
-          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
 
       # windows-2022 ships VS2022 but not always the ARM64 *target* tools.
       # clang-cl (V8) links arm64 against the arm64 Windows SDK libs;
@@ -456,19 +430,14 @@ jobs:
           - name: euro-office
             company_name: Euro-Office
             product_name: Euro-Office
-            # Unsigned, packaged here and published to the GitHub release.
-            sign: false
-          - name: nextcloud-office
-            company_name: Nextcloud Office
-            product_name: Nextcloud Office
-            # Only a signing bundle here; signed + packaged on the signing
-            # server (build/windows/sign-package.ps1).
+            # On tags only a signing bundle here; signed + packaged by the
+            # sign-windows job (build/windows/sign-package.ps1). Branch and
+            # PR builds stay unsigned and are packaged here.
             sign: true
     env:
       PYTHONUTF8: "1"
-      NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
-      NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
       SCCACHE_GHA_ENABLED: "true"
+      SIGN_BUNDLE: ${{ matrix.brand.sign && startsWith(github.ref, 'refs/tags/') }}
     steps:
       # ---- orchestration / environment setup (stays in the workflow) ---- #
       - name: Checkout fork repository (with submodules)
@@ -476,14 +445,6 @@ jobs:
         with:
           path: .
           submodules: recursive
-          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
-
-      - name: Checkout nextcloud-office-brand repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: Euro-Office/nextcloud-office-brand
-          path: build/brands/nextcloud-office-brand
-          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -538,9 +499,9 @@ jobs:
         shell: pwsh
         run: |
           $extra = @{}
-          if ('${{ matrix.brand.sign }}' -eq 'true') {
+          if ($env:SIGN_BUNDLE -eq 'true') {
             # Packages must be built from signed binaries, so leave that to
-            # the signing server.
+            # the sign-windows job.
             $extra.SigningBundle = "${{ github.workspace }}\windows-signing-bundle.tar"
             $extra.SkipPackaging = $true
           }
@@ -556,7 +517,7 @@ jobs:
             -ProductName "${{ matrix.brand.product_name }}"
 
       # ---- collect outputs (stays in the workflow) ---- #
-      - if: ${{ !matrix.brand.sign }}
+      - if: env.SIGN_BUNDLE != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: windows-packages-${{ matrix.brand.name }}-${{ matrix.arch }}
@@ -567,9 +528,9 @@ jobs:
           # Kept longer on tags for the publish jobs and the manual signing.
           retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 7 }}
 
-      # Input for build/windows/sign-package.ps1 on the signing server, which
+      # Input for build/windows/sign-package.ps1 in the sign-windows job, which
       # signs the binaries and builds + signs the ZIP and Inno installer.
-      - if: matrix.brand.sign
+      - if: env.SIGN_BUNDLE == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: windows-signing-bundle-${{ matrix.brand.name }}-${{ matrix.arch }}
@@ -577,6 +538,129 @@ jobs:
           if-no-files-found: error
           # Kept longer on tags for the publish jobs and the manual signing.
           retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 7 }}
+
+  # ─────────────────────────────────────────────────────────────
+  # SIGN (Windows) - tags only
+  #
+  # Signs the euro-office signing bundles with Azure Artifact Signing
+  # (OIDC login, no stored certificate) and builds the signed ZIP and
+  # Inno installer with build/windows/sign-package.ps1. Uploads them as
+  # windows-packages-euro-office-<arch>, the artifact publish-release
+  # picks up. Both arches sign on x64: the signing dlib is x64-only, so
+  # arm64 builds keep no VLC plugin cache (see build/windows/README.md).
+  # ─────────────────────────────────────────────────────────────
+  sign-windows:
+    name: sign-windows (${{ matrix.arch }})
+    runs-on: windows-2022
+    needs: build-windows
+    if: startsWith(github.ref, 'refs/tags/')
+    environment: signing
+    permissions:
+      id-token: write          # azure/login OIDC
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - amd64
+          - arm64
+    env:
+      BRAND: euro-office
+      SIGN_TOOLS: C:\ats       # short: the dlib path ends up in every signtool call
+    steps:
+      # Only sign-package.ps1 + packaging-helpers.ps1 are needed; the
+      # packaging scripts come from the bundle.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: false
+          sparse-checkout: build/windows
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: windows-signing-bundle-${{ env.BRAND }}-${{ matrix.arch }}
+          path: bundle
+
+      - name: Install signing and packaging tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . .\build\windows\packaging-helpers.ps1
+
+          # The Artifact Signing dlib runs on .NET 8.
+          $runtimes = dotnet --list-runtimes
+          if (-not ($runtimes -match '^Microsoft\.NETCore\.App 8\.')) {
+            throw ".NET 8 runtime not found on the runner:`n$($runtimes -join "`n")"
+          }
+
+          nuget install Microsoft.ArtifactSigning.Client -Version $env:ARTIFACT_SIGNING_CLIENT_VERSION `
+            -OutputDirectory $env:SIGN_TOOLS -ExcludeVersion -NonInteractive
+          Assert-LastExit "nuget install"
+          $dlib = Get-ChildItem $env:SIGN_TOOLS -Recurse -Filter Azure.CodeSigning.Dlib.dll |
+                  Where-Object { $_.Directory.Name -eq 'x64' } | Select-Object -First 1
+          if (-not $dlib) { throw "x64 Azure.CodeSigning.Dlib.dll not found under $env:SIGN_TOOLS." }
+
+          $metadata = Join-Path $env:SIGN_TOOLS 'metadata.json'
+          [ordered]@{
+            Endpoint               = $env:ARTIFACT_SIGNING_ENDPOINT
+            CodeSigningAccountName = $env:ARTIFACT_SIGNING_ACCOUNT
+            CertificateProfileName = $env:ARTIFACT_SIGNING_PROFILE
+          } | ConvertTo-Json | Set-Content -Encoding ASCII $metadata
+          Get-Content $metadata
+
+          "SIGN_DLIB=$($dlib.FullName)" >> $env:GITHUB_ENV
+          "SIGN_METADATA=$metadata"     >> $env:GITHUB_ENV
+
+          # Same packaging tools build.ps1 -InstallDeps installs; the runner
+          # image normally ships both.
+          if (-not (Get-InnoRoot '')) { choco install innosetup --version=6.2.2 -y --no-progress }
+          if (-not (Test-Path 'C:\Program Files\7-Zip\7z.exe')) { choco install 7zip -y --no-progress }
+
+      # Last step before signing: az caches the access token below, but the
+      # OIDC assertion it logs in with expires within minutes.
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Fetch the code signing token
+        shell: pwsh
+        run: az account get-access-token --resource https://codesigning.azure.net --output none
+
+      - name: Sign + package (sign-package.ps1)
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}   # Sync-InnoLanguages API call
+        run: |
+          .\build\windows\sign-package.ps1 `
+            -BundlePath .\bundle `
+            -Brand $env:BRAND `
+            -OutDir "${{ github.workspace }}\signed" `
+            -SignArgs @('/fd', 'SHA256', '/tr', 'http://timestamp.acs.microsoft.com', '/td', 'SHA256',
+                        '/dlib', $env:SIGN_DLIB, '/dmdf', $env:SIGN_METADATA)
+
+      # Flat, like the unsigned windows-packages artifact, so publish-release
+      # can upload dist/* as-is. Checksums are per arch to avoid a name clash.
+      - name: Collect signed packages
+        shell: pwsh
+        run: |
+          $dist = New-Item -ItemType Directory -Force -Path dist
+          Get-ChildItem signed -Recurse -File -Include *.zip, *.exe | Copy-Item -Destination $dist
+          $sums = Get-ChildItem $dist -File | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower(), $_.Name
+          }
+          Set-Content -Encoding ASCII (Join-Path $dist 'SHA256SUMS-windows-${{ matrix.arch }}.txt') $sums
+          Get-ChildItem $dist | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-packages-${{ env.BRAND }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
 
   # ─────────────────────────────────────────────────────────────
   # BUILD (Linux)
@@ -610,34 +694,12 @@ jobs:
             extra_bake_files_linux: ""
             extra_targets_linux: ""
             cache_prefix: ""
-          - name: nextcloud-office
-            company_name: Nextcloud Office
-            product_name: Nextcloud Office
-            # Same publisher as the Windows installer (brand config/branding.iss).
-            publisher_name: Nextcloud GmbH
-            publisher_url: https://nextcloud.com/
-            # Bake context for ./build/linux targets is `../..` = repo root,
-            # so this is the same string as in build-common.
-            branding_dir: "./build/brands/nextcloud-office-brand"
-            # Relative to workdir ./build/linux, i.e. one level deeper than
-            # build-common: "../brands/nextcloud-office-brand/<file>.hcl"
-            extra_bake_files_linux: ""
-            extra_targets_linux: ""
-            cache_prefix: "nextcloud-office-"
     steps:
       - name: Checkout fork repository (with submodules)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: .
           submodules: recursive
-          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
-
-      - name: Checkout nextcloud-office-brand repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: Euro-Office/nextcloud-office-brand
-          path: build/brands/nextcloud-office-brand
-          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -655,7 +717,6 @@ jobs:
           echo "brand:     ${{ matrix.brand.name }}"
           ls -la "${{ github.workspace }}"
           ls -la "${{ github.workspace }}/build" || echo "build/ MISSING"
-          ls -la "${{ github.workspace }}/build/brands/nextcloud-office-brand" || echo "brand/ MISSING"
 
       - name: Set up Docker Buildx
         id: buildx
@@ -739,8 +800,6 @@ jobs:
           PUBLISHER_NAME: ${{ matrix.brand.publisher_name }}
           PUBLISHER_URL: ${{ matrix.brand.publisher_url }}
           # ------------------
-          NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
-          NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -763,7 +822,7 @@ jobs:
   #
   # NOTE: unlike Linux and Windows, macOS uses a single Xcode project
   # (Euro-Office.xcodeproj) for every brand - there's no separate
-  # Nextcloud-Office project/scheme. PRODUCT_NAME/PRODUCT_BUNDLE_IDENTIFIER
+  # project/scheme per brand. PRODUCT_NAME/PRODUCT_BUNDLE_IDENTIFIER
   # are overridden per-brand directly on the xcodebuild command line, and
   # copyright/CFBundleName text + icons are patched by apply-branding.sh /
   # regenerate-branding-assets.sh before the build (both ephemeral, not
@@ -796,17 +855,6 @@ jobs:
             app_icon_svg: ""
             tab_icon_light_svg: ""
             tab_icon_dark_svg: ""
-          - name: nextcloud-office
-            xcode_project: desktop-apps/macos/Euro-Office.xcodeproj
-            xcode_scheme: Euro-Office-arm
-            app_bundle: Nextcloud Office.app
-            package_name: Nextcloud-Office-DesktopEditors
-            company_name: Nextcloud Office
-            product_name: Nextcloud Office
-            bundle_id: asc.nextcloud-office.Nextcloud-Office
-            app_icon_svg: build/brands/nextcloud-office-brand/svg/app-icon.svg
-            tab_icon_light_svg: build/brands/nextcloud-office-brand/svg/logo-light.svg
-            tab_icon_dark_svg: build/brands/nextcloud-office-brand/svg/logo-dark.svg
     env:
       REPO: ${{ github.workspace }}
       EO_3RDPARTY: /Users/runner/eo-3rdparty
@@ -820,14 +868,6 @@ jobs:
         with:
           path: .
           submodules: recursive
-          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
-
-      - name: Checkout nextcloud-office-brand repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: Euro-Office/nextcloud-office-brand
-          path: build/brands/nextcloud-office-brand
-          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -962,7 +1002,7 @@ jobs:
           # One table per brand: a row per artifact kind, a column per arch.
           {
             echo "Test build for $SHA ([run]($RUN_URL), artifacts kept 7 days)"
-            for brand in "euro-office:Euro-Office" "nextcloud-office:Nextcloud Office"; do
+            for brand in "euro-office:Euro-Office"; do
               rows=""
               for kind in "linux-packages:Linux (.deb, .rpm, .tar.xz)" "windows-packages:Windows (.exe, .zip)" \
                           "windows-signing-bundle:Windows signing bundle" "macos-packages:macOS (.dmg)"; do
@@ -996,10 +1036,14 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────
   # PUBLISH - euro-office to GitHub Release (this repository)
+  #
+  # Windows packages are the signed ones from sign-windows; Linux and
+  # macOS are unsigned for now.
+  # TODO(signing): macOS (Apple notarization) and Linux (GPG) signing.
   # ─────────────────────────────────────────────────────────────
   publish-release:
     runs-on: ubuntu-latest
-    needs: [release-info, build-linux, build-windows, build-macos]
+    needs: [release-info, build-linux, sign-windows, build-macos]
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
@@ -1038,119 +1082,3 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}" dist/*
           fi
-
-  # ─────────────────────────────────────────────────────────────
-  # PUBLISH - nextcloud-office to nextcloud-releases/Office-DesktopEditors
-  #
-  # GITHUB_TOKEN can't write to another repository, so this uses
-  # NEXTCLOUD_RELEASES_TOKEN: a classic PAT of the nextcloud-releases bot
-  # account (scopes: public_repo, write:packages). The same token publishes
-  # the DocumentServer release and its image on ghcr.io/nextcloud-releases.
-  # ─────────────────────────────────────────────────────────────
-  publish-nextcloud-release:
-    runs-on: ubuntu-latest
-    needs: [release-info, build-linux, build-windows, build-macos]
-    if: startsWith(github.ref, 'refs/tags/')
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: '*-packages-nextcloud-office-*'
-          path: dist
-          merge-multiple: true
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          sparse-checkout: CHANGELOG.md
-          sparse-checkout-cone-mode: false
-          path: src
-          persist-credentials: false
-
-      # The tag does not exist in the releases repo; gh creates it on its
-      # default branch. Signed Windows/macOS assets are added by hand later
-      # and are kept on re-runs, only same-named files are replaced.
-      - name: Create or update the release
-        env:
-          GH_TOKEN: ${{ secrets.NEXTCLOUD_RELEASES_TOKEN }}
-          REPO: nextcloud-releases/Office-DesktopEditors
-          TITLE: Nextcloud Office Desktop ${{ github.ref_name }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          PRERELEASE: ${{ needs.release-info.outputs.stable != 'true' }}
-          LATEST: ${{ needs.release-info.outputs.stable == 'true' }}
-        run: |
-          set -euo pipefail
-          # The CHANGELOG.md section of this tag, written by Euro-Office/release.
-          awk -v h="## $GITHUB_REF_NAME" '$0 == h { f = 1; next } f && /^## / { exit } f' src/CHANGELOG.md > notes.md
-          printf '\nBuilt from %s@%s, %s\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$RUN_URL" >> notes.md
-          flags=(--title "$TITLE" --notes-file notes.md --prerelease="$PRERELEASE" --latest="$LATEST")
-          # Re-runs update the existing release and replace its assets.
-          if gh release view "$GITHUB_REF_NAME" -R "$REPO" >/dev/null 2>&1; then
-            gh release edit "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}"
-            gh release upload "$GITHUB_REF_NAME" -R "$REPO" --clobber dist/*
-          else
-            gh release create "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}" dist/*
-          fi
-
-  # ─────────────────────────────────────────────────────────────
-  # PUBLISH - nextcloud-office to the versioned directory on the server
-  #
-  # Lands under office/desktopeditors/<version>/<build>/, mirroring
-  # office/docserver/<version>/. Independent of the APT/DNF archive so
-  # beta/dev builds stay downloadable.
-  # ─────────────────────────────────────────────────────────────
-  publish-files:
-    runs-on: ubuntu-latest
-    needs: [version, build-linux, build-windows, build-macos]
-    if: startsWith(github.ref, 'refs/tags/')
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: '*-packages-nextcloud-office-*'
-          path: dist
-          merge-multiple: true
-
-      - name: Upload via SSH
-        env:
-          SSH_KEY: ${{ secrets.NEXTCLOUD_SSH_KEY }}
-          SSH_HOST: ${{ secrets.NEXTCLOUD_SSH_HOST }}
-          SSH_USER: ${{ secrets.NEXTCLOUD_SSH_USER }}
-          SSH_PORT: ${{ secrets.NEXTCLOUD_SSH_PORT || 22 }}
-          REMOTE_BASE: ${{ secrets.NEXTCLOUD_SSH_REMOTE_PATH }}
-          PRODUCT_VERSION: ${{ needs.version.outputs.product_version }}
-          BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-
-          TARGET="$REMOTE_BASE/desktopeditors/$PRODUCT_VERSION/$BUILD_NUMBER"
-          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$TARGET'"
-          scp -i ~/.ssh/id_deploy -P "$SSH_PORT" -r dist/. \
-            "$SSH_USER@$SSH_HOST:$TARGET/"
-
-  # ─────────────────────────────────────────────────────────────
-  # PUBLISH - nextcloud-office to the shared APT/DNF archive
-  #
-  # Stable tags only (v9.3.4). The logic lives once in the
-  # DocumentServer repo and is called from here.
-  #
-  # A job calling a reusable workflow caps the called workflow's token
-  # permissions, so this block must be a superset of what the called
-  # workflow's jobs request (its 'publish' job wants 'actions: read').
-  # ─────────────────────────────────────────────────────────────
-  publish-repo:
-    needs: [release-info, build-linux]
-    if: needs.release-info.outputs.stable == 'true'
-    permissions:
-      contents: read
-      actions: read
-    uses: Euro-Office/DocumentServer/.github/workflows/publish-repo.yml@main
-    with:
-      product: desktopeditors
-      artifact_pattern: 'linux-packages-nextcloud-office-*'
-    secrets: inherit

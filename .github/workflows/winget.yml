@@ -4,6 +4,8 @@ on:
     types: [released]
 jobs:
   publish:
+    # Upstream only: publishes ONLYOFFICE.DesktopEditors with Euro-Office's token.
+    if: github.repository_owner == 'Euro-Office'
     runs-on: windows-latest
     steps:
       - name: Publish to WinGet

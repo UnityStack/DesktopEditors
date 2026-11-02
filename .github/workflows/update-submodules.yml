@@ -7,6 +7,8 @@ on:
 
 jobs:
   update-submodules:
+    # Upstream only: the called workflow needs Euro-Office's self-hosted runner and token.
+    if: github.repository_owner == 'Euro-Office'
     permissions:
       contents: write
       pull-requests: write
