@@ -1,0 +1,219 @@
+Fork edits of upstream files under desktop-apps/package/ (the submodule stays
+untouched). build/.docker/packages.bake.Dockerfile applies this after copying
+the build/linux/package/ overlay (new files, see its fork.mk):
+
+  patch -p1 --forward --fuzz=0 < package.patch     (in desktop-apps/package)
+
+--fuzz=0 makes upstream drift fail the build instead of patching the wrong
+place. To change or rebase it, edit a copy of the files and regenerate with
+"diff -ru a b" from a directory holding the original (a/) and edited (b/) tree.
+
+  deb/template/control.m4  Homepage field (PUBLISHER_URL)
+  deb/template/postrm.m4   purge removes what postinst wrote: the .sources
+                           and defaults files if still ours, the keyring if
+                           no other apt source uses it
+  rpm/common.spec          %post registers the repository like the deb
+                           postinst (zypp or yum directory by distribution),
+                           %postun on erase removes it again; ships
+                           the metainfo and the rpm-only payload (repository
+                           key); fixes the "euro-office" comparison, which
+                           never matched COMPANY_NAME "Euro-Office" (no help
+                           subpackage, no /usr/bin/desktopeditors, and a
+                           mode-777 /etc/<package> directory)
+  rpm/requires.spec        Requires by soname and "Fedora or openSUSE" font
+                           names, so the one RPM also installs on openSUSE
+                           (Fedora package names such as boost-filesystem or
+                           xcb-util-cursor do not exist there), and on EL10
+                           without EPEL (no libXss)
+
+--- a/deb/template/control.m4
++++ b/deb/template/control.m4
+@@ -3,6 +3,7 @@
+ Priority: optional
+ Maintainer: M4_PUBLISHER_NAME`'ifelse(M4_SUPPORT_MAIL,,,` <M4_SUPPORT_MAIL>')
+ Build-Depends: debhelper (>= 8.0.0)
++Homepage: M4_PUBLISHER_URL
+ 
+ Package: M4_PACKAGE_NAME
+ #Standards-Version: 3.9.4
+--- a/deb/template/postrm.m4
++++ b/deb/template/postrm.m4
+@@ -6,6 +6,18 @@
+   purge)
+     rm -fr /home/*/.local/share/M4_DESKTOPEDITORS_PREFIX
+     rm -fr /home/*/.config/M4_COMPANY_NAME_LOW/DesktopEditors.conf
++    # Repository registration from postinst. The .sources and defaults files
++    # only when they are still ours (an admin's own file, such as an opt-out,
++    # stays); the key only when no other apt source still uses it.
++    if grep -qsF "Written by the M4_PACKAGE_NAME package." /etc/apt/sources.list.d/M4_REPO_NAME.sources; then
++      rm -f /etc/apt/sources.list.d/M4_REPO_NAME.sources
++    fi
++    if ! grep -rqsF /usr/share/keyrings/M4_REPO_NAME.asc /etc/apt/sources.list /etc/apt/sources.list.d/; then
++      rm -f /usr/share/keyrings/M4_REPO_NAME.asc
++    fi
++    if grep -qsF "Written by the M4_PACKAGE_NAME package." /etc/default/M4_REPO_NAME; then
++      rm -f /etc/default/M4_REPO_NAME
++    fi
+   ;;
+ 
+   remove|upgrade)
+--- a/rpm/common.spec
++++ b/rpm/common.spec
+@@ -1,3 +1,7 @@
++# The Makefile passes COMPANY_NAME as is ("Euro-Office"), so compare the
++# lower-case form below.
++%global _company_name_low %{lua: print(string.lower(rpm.expand("%{_company_name}")))}
++
+ Name: %{_package_name}
+ Version: %{_product_version}
+ Release: %{_build_number}
+@@ -27,7 +31,7 @@
+ Open-source office suite pack that comprises all the tools you need to
+ work offline with documents, spreadsheets, presentations, PDFs, and PDF forms.
+ 
+-%if "%{_company_name}" == "euro-office"
++%if "%{_company_name_low}" == "euro-office"
+ %package help
+ Summary: Offline help for %{_company_name} %{_product_name}
+ BuildArch: noarch
+@@ -51,9 +55,11 @@
+ 
+ mkdir -p %{buildroot}
+ cp -rt %{buildroot}/ $BUILD_DIR/main/*
++# rpm-only payload from build/linux/package/fork.mk (repository key)
++cp -rt %{buildroot}/ $BUILD_DIR/rpm/*
+ echo "package = rpm" > $OPT_DIR/%{_desktopeditors_prefix}/converter/package.config
+ 
+-%if "%{_company_name}" == "euro-office"
++%if "%{_company_name_low}" == "euro-office"
+ ln -srf $BIN_DIR/%{_desktopeditors_exec} $BIN_DIR/desktopeditors
+ cp -rt %{buildroot}/ $BUILD_DIR/help/*
+ %else
+@@ -70,8 +76,10 @@
+ %attr(-, root, root) %{_datadir}/doc/*
+ %attr(-, root, root) %{_datadir}/icons/*
+ %attr(-, root, root) %{_datadir}/licenses/*
++%attr(-, root, root) %{_datadir}/metainfo/*
++%attr(644, root, root) %{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-%{_repo_name}
+ %attr(755, root, root) %{_bindir}/%{_desktopeditors_exec}
+-%if "%{_company_name}" == "euro-office"
++%if "%{_company_name_low}" == "euro-office"
+ %attr(-, root, root) %{_bindir}/desktopeditors
+ %exclude /opt/%{_desktopeditors_prefix}/editors/web-apps/apps/*/main/resources/help
+ %else
+@@ -81,15 +89,90 @@
+ %attr(777, root, root) %{_sysconfdir}/%{_package_name}
+ %endif
+ 
+-%if "%{_company_name}" == "euro-office"
++%if "%{_company_name_low}" == "euro-office"
+ %files help
+ %defattr(-, root, root, -)
+ /opt/%{_desktopeditors_prefix}/editors/web-apps/apps/*/main/resources/help
+ %endif
+ 
++%post
++# Registers the signed repository once, like Chrome does: if no repo file
++# points at it yet and the admin did not opt out, write one for zypper or dnf
++# and record repo_add="false" in the defaults file, so a removed repo file is
++# not recreated by later upgrades. Opt-out before installing: an empty
++# defaults file or one containing repo_add="false". The key is payload
++# (gpgkey below); dnf/zypper import it on first use, never this scriptlet.
++# pkg_gpgcheck: with a signed repomd.xml zypper skips the package signature
++# unless it is set (dnf ignores it, gpgcheck covers dnf).
++defaults=/etc/default/%{_repo_name}
++header="Written by the %{_package_name} package."
++repo_uri=%{_repo_url}/rpm
++# Prereleases come from the testing channel (stable + prereleases).
++case "%{version}-%{release}" in
++  *~rc*|*~beta*|*~alpha*) channel=testing; repo_id=%{_repo_name}-testing; name_suffix=" - testing" ;;
++  *) channel=stable; repo_id=%{_repo_name}; name_suffix= ;;
++esac
++# By distribution, not by which directory exists: Fedora's zypper package
++# creates /etc/zypp/repos.d too, and dnf never reads it.
++if [ -d /etc/zypp/repos.d ] && { grep -qsiE '^ID(_LIKE)?=.*suse' /etc/os-release || [ ! -d /etc/yum.repos.d ]; }; then
++  repo_file=/etc/zypp/repos.d/%{_repo_name}.repo
++else
++  repo_file=/etc/yum.repos.d/%{_repo_name}.repo
++fi
++repo_add=
++if [ -f "$defaults" ] && [ ! -s "$defaults" ]; then
++  repo_add=false
++elif [ -f "$defaults" ]; then
++  repo_add=$(sed -n 's/^[[:space:]]*repo_add=//p' "$defaults" | tail -n 1 | tr -d "\"' ")
++fi
++if [ "$repo_add" != "false" ] && [ -d "$(dirname "$repo_file")" ]; then
++  if ! grep -rqsF "${repo_uri#*://}" /etc/yum.repos.d /etc/zypp/repos.d; then
++    cat > "$repo_file.rpmtmp" <<EOF
++# $header Remove this file to stop
++# updates; it is not recreated (set repo_add="false" in $defaults).
++[$repo_id]
++name=%{_company_name} Community Edition (%{_publisher_name})$name_suffix
++baseurl=$repo_uri/$channel/
++enabled=1
++gpgcheck=1
++repo_gpgcheck=1
++pkg_gpgcheck=1
++gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-%{_repo_name} %{_repo_url}/keys/%{_repo_name}.asc
++metadata_expire=6h
++type=rpm-md
++autorefresh=1
++EOF
++    chmod 0644 "$repo_file.rpmtmp"
++    mv -f "$repo_file.rpmtmp" "$repo_file"
++  fi
++  if [ ! -e "$defaults" ]; then
++    mkdir -p /etc/default
++    cat > "$defaults" <<EOF
++# $header
++# repo_add="false": the package does not (re)create its repository file
++# ($repo_file). Delete this file to have the next install or upgrade add
++# the repository again.
++repo_add="false"
++EOF
++  elif grep -q '^[[:space:]]*repo_add=' "$defaults"; then
++    sed -i 's/^\([[:space:]]*\)repo_add=.*/\1repo_add="false"/' "$defaults"
++  else
++    echo 'repo_add="false"' >> "$defaults"
++  fi
++fi
++
+ %postun
+ rm -f /usr/share/mime/packages/onlyoffice-docxf.xml
+ rm -f /usr/share/mime/packages/onlyoffice-oform.xml
++if [ "$1" = 0 ]; then
++  # Erase (not upgrade): drop what the install scriptlet wrote, if it is
++  # still ours. An admin's own defaults file (opt-out) stays.
++  for f in /etc/yum.repos.d/%{_repo_name}.repo /etc/zypp/repos.d/%{_repo_name}.repo /etc/default/%{_repo_name}; do
++    if grep -qsF "Written by the %{_package_name} package." "$f"; then
++      rm -f "$f"
++    fi
++  done
++fi
+ 
+ %changelog
+ 
+--- a/rpm/requires.spec
++++ b/rpm/requires.spec
+@@ -1,5 +1,20 @@
+ %if "%{_package_edition}" == "full"
+ Requires: curl, libX11, xdg-utils, dejavu-sans-fonts, dejavu-sans-mono-fonts, dejavu-serif-fonts, liberation-mono-fonts, liberation-sans-fonts, liberation-serif-fonts
+ %else
+-Requires: curl, libX11, libXScrnSaver, atk, gtk3, libstdc++ >= 4.8.0, boost-filesystem, xcb-util-renderutil, xcb-util-image, xcb-util-wm, libxcb, xcb-util-keysyms, xcb-util-cursor, xdg-utils, libxkbcommon-x11, libnotify, dejavu-sans-fonts, dejavu-sans-mono-fonts, dejavu-serif-fonts, liberation-mono-fonts, liberation-narrow-fonts, liberation-sans-fonts, liberation-serif-fonts
++# One RPM for Fedora/RHEL and openSUSE, whose package names differ (libX11
++# vs libX11-6, xcb-util-cursor vs libxcb-cursor0, ...): libraries by soname,
++# which both generate (only 64-bit packages are built), fonts as "Fedora
++# name or openSUSE name". Narrow is a separate package only on Fedora/EL
++# (openSUSE's liberation-fonts holds it, or has none), so it is required
++# only there; "or liberation-fonts" would let dnf skip it. boost-filesystem
++# is gone: boost is linked statically, no binary needs a system one; so is
++# libXScrnSaver, which no binary links or loads (and EL10 lacks without EPEL).
++# NSS, ALSA, GBM, DRM, GL/EGL, X11-xcb and PulseAudio: linked directly by
++# the binaries and libcef.so, so a minimal install without a desktop starts.
++Requires: curl, xdg-utils
++Requires: libX11.so.6()(64bit), libatk-1.0.so.0()(64bit), libgtk-3.so.0()(64bit), libnotify.so.4()(64bit), libstdc++.so.6(GLIBCXX_3.4.18)(64bit)
++Requires: libnss3.so()(64bit), libnspr4.so()(64bit), libsmime3.so()(64bit), libnssutil3.so()(64bit), libasound.so.2()(64bit), libgbm.so.1()(64bit), libdrm.so.2()(64bit), libX11-xcb.so.1()(64bit), libGL.so.1()(64bit), libEGL.so.1()(64bit), libOpenGL.so.0()(64bit), libpulse.so.0()(64bit)
++Requires: libxcb.so.1()(64bit), libxcb-render-util.so.0()(64bit), libxcb-image.so.0()(64bit), libxcb-icccm.so.4()(64bit), libxcb-keysyms.so.1()(64bit), libxcb-cursor.so.0()(64bit), libxkbcommon-x11.so.0()(64bit)
++Requires: (dejavu-sans-fonts or dejavu-fonts), (dejavu-sans-mono-fonts or dejavu-fonts), (dejavu-serif-fonts or dejavu-fonts)
++Requires: (liberation-mono-fonts or liberation-fonts), (liberation-narrow-fonts if liberation-sans-fonts), (liberation-sans-fonts or liberation-fonts), (liberation-serif-fonts or liberation-fonts)
+ %endif

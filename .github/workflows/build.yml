@@ -11,10 +11,24 @@ on:
   # GITHUB_TOKEN, so the ghcr.io build-cache pushes (cache-to) are refused.
   pull_request:
   workflow_dispatch:
+    inputs:
+      replace_assets:
+        description: >-
+          On a tag that already has a release: replace assets whose content
+          differs (only before the package repository describes them)
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+# Least privilege for the jobs without a permissions block of their own
+# (version, crosscompile-3rdparty-arm64, build-windows, build-macos,
+# release-info): they only check out and use artifacts and caches. Every
+# other job states what it needs.
+permissions:
+  contents: read
 
 env:
   REGISTRY: ghcr.io/unitystack
@@ -56,8 +70,171 @@ env:
 # ─────────────────────────────────────────────────────────────
 
 jobs:
+  # ─────────────────────────────────────────────────────────────
+  # SIGNING KEY CHECKS - see build/linux/README.md, "Signing key". The
+  # key has a signing subkey whose secret CI holds and a spare whose secret
+  # stays offline, both without expiry. These jobs make sure CI holds
+  # exactly that one subkey, that the committed key still verifies what was
+  # released, and that nothing a release ships breaks installed systems.
+  #
+  # signing-preflight (`v*` tags only, environment `signing`) downloads the
+  # SHA256SUMS-linux-*.txt.asc of the newest 10 releases, imports
+  # LINUX_GPG_PRIVATE_KEY like sign-linux and signs a test message. It
+  # fails when the secret holds more or less than one signing subkey (or
+  # the primary key's secret), when that subkey is not the one
+  # build/linux/unitystack-package-signing.ci-subkey designates, is not in
+  # the committed key with the same binding, or is revoked or expired there
+  # or in the published key, when the passphrase does not work, when the
+  # committed key is not exactly one public key (secret key material, more
+  # than one armored block), lacks a signature packet the published key
+  # has, or no longer verifies a released signature the way rpm 6 does (a
+  # binding of the subkey made no later than the signature), and when not
+  # every released signature could be downloaded. A subkey that has an
+  # expiry also fails under 90 days left (FAIL_DAYS) and warns under 180
+  # (WARN_DAYS); one without expiry is the normal case. No spare is a
+  # warning. version and crosscompile-3rdparty-arm64 need the preflight,
+  # and every build job needs one of them, so nothing expensive starts
+  # until it passed. sign-linux and publish-repo run the check again with
+  # --after-build: an expiring subkey fails there only under 60 days
+  # (FAIL_DAYS minus RERUN_DAYS, the 30 days in which a run can be
+  # re-run), so a re-run never trips over a subkey that the preflight of
+  # the same run accepted.
+  #
+  # The preflight's `if:` matches the `v*` tag rule of the `signing`
+  # environment: on other tags it is skipped instead of being refused by
+  # the environment, the builds run as before, and the tag-only sign and
+  # publish jobs are skipped (they could not use the environment either).
+  #
+  # On branches and PRs signing-preflight is skipped, and GitHub skips
+  # "all jobs in the dependency chain from the point of failure or
+  # skip onwards" whose `if:` has no status function (the implicit
+  # success()). The jobs that run on non-tag events below it therefore
+  # carry `if: ${{ !cancelled() && !failure() }}`: they run unless an
+  # upstream job failed or the run was cancelled, as before. Jobs that
+  # run on tags only keep their plain `if:`, since nothing upstream is
+  # skipped on a tag. A new job that needs version or the build jobs and
+  # runs on branches needs the same condition.
+  #
+  # signing-key runs on every event, needs no secret and blocks nothing:
+  # the same checks of the public key (and the released signatures) as
+  # error and warning annotations, and a table of the signing subkeys
+  # (which one CI holds, the spare) in the run summary. The monthly
+  # signing-key-check.yml also checks the site and opens an issue.
+  # signing-key also warns when GitHub has disabled that monthly workflow
+  # (it does so after 60 days without activity in a public repository).
+  # ─────────────────────────────────────────────────────────────
+  signing-preflight:
+    runs-on: ubuntu-24.04
+    if: startsWith(github.ref, 'refs/tags/v')   # the `signing` environment's tag rule
+    environment: signing
+    permissions:
+      contents: read
+    env:
+      PUBLIC_KEY_FILE: build/linux/unitystack-package-signing.asc
+      LINUX_GPG_SIGN_SUBKEY: ${{ vars.LINUX_GPG_SIGN_SUBKEY }}
+      LINUX_GPG_ALLOW_UNPUBLISHED_SUBKEY: ${{ vars.LINUX_GPG_ALLOW_UNPUBLISHED_SUBKEY }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: false
+          sparse-checkout: build/linux
+          persist-credentials: false
+
+      - name: Download the released signatures
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash build/linux/fetch-released-signatures.sh "$RUNNER_TEMP/released"
+
+      - name: Import the signing key
+        env:
+          LINUX_GPG_PRIVATE_KEY: ${{ secrets.LINUX_GPG_PRIVATE_KEY }}
+          LINUX_GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
+        run: bash build/linux/import-signing-key.sh --released "$RUNNER_TEMP/released"
+
+      # The import works without the passphrase, signing does not: a wrong
+      # or missing LINUX_GPG_PASSPHRASE fails here, not in sign-linux.
+      - name: Sign a test message
+        run: |
+          set -euo pipefail
+          pass_args=()
+          if [ -n "${GPG_PASSPHRASE_FILE:-}" ]; then
+            pass_args=(--pinentry-mode loopback --passphrase-file "$GPG_PASSPHRASE_FILE")
+          fi
+          if ! echo probe | gpg --batch "${pass_args[@]}" --local-user "$SIGN_FPR!" --clearsign > "$RUNNER_TEMP/probe.asc"; then
+            echo "::error::Cannot sign with $SIGN_FPR: LINUX_GPG_PASSPHRASE is missing or not this subkey's passphrase."
+            exit 1
+          fi
+          vhome="$RUNNER_TEMP/gnupg-verify"
+          mkdir -m 700 "$vhome"
+          gpg --homedir "$vhome" --batch --quiet --import "$VERIFY_KEY"
+          gpg --homedir "$vhome" --batch --status-fd 1 --verify "$RUNNER_TEMP/probe.asc" 2>/dev/null |
+            grep -q "^\[GNUPG:\] VALIDSIG $SIGN_FPR " || { echo "::error::The test signature does not verify with $PUBLIC_KEY_FILE."; exit 1; }
+          echo "Signed and verified a test message with $SIGN_FPR."
+
+      - name: Remove the signing key
+        if: always()
+        run: |
+          GNUPGHOME="$RUNNER_TEMP/gnupg" gpgconf --kill all 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/gnupg" "$RUNNER_TEMP/gnupg-verify" "$RUNNER_TEMP/probe.asc"
+
+  signing-key:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read            # the state of signing-key-check.yml
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: false
+          sparse-checkout: |
+            build/linux/fetch-released-signatures.sh
+            build/linux/select-signing-subkey.sh
+            build/linux/unitystack-package-signing.asc
+            build/linux/unitystack-package-signing.ci-subkey
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Download the released signatures
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash build/linux/fetch-released-signatures.sh "$RUNNER_TEMP/released"
+
+      # Never fails the run: on errors the step shows red with its
+      # annotations, the job stays green. Warnings (exit 3) are annotations
+      # only.
+      - name: Check the signing key
+        continue-on-error: true
+        env:
+          PUBLIC_KEY_FILE: build/linux/unitystack-package-signing.asc
+          LINUX_GPG_SIGN_SUBKEY: ${{ vars.LINUX_GPG_SIGN_SUBKEY }}
+        run: |
+          rc=0
+          bash build/linux/select-signing-subkey.sh --public --released "$RUNNER_TEMP/released" \
+            > "$RUNNER_TEMP/report.md" || rc=$?
+          tee -a "$GITHUB_STEP_SUMMARY" < "$RUNNER_TEMP/report.md"
+          if [ "$rc" = 3 ]; then rc=0; fi
+          exit "$rc"
+
+      # GitHub disables scheduled workflows of a public repository after 60
+      # days without activity, silently. The next push or PR then says so.
+      - name: Check that the monthly signing key check is enabled
+        if: github.repository == 'UnityStack/DesktopEditors'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! state=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/signing-key-check.yml" --jq .state 2>&1); then
+            echo "::notice::Cannot read the state of signing-key-check.yml (not on the default branch yet?): $state"
+          elif [ "$state" != active ]; then
+            echo "::warning::The monthly signing key check is $state, so nobody is told when the site or the signing key needs attention. Enable it: gh workflow enable signing-key-check.yml -R $GITHUB_REPOSITORY (build/linux/README.md, \"The checks\")."
+          else
+            echo "signing-key-check.yml is $state."
+          fi
+
   version:
     runs-on: ubuntu-latest
+    needs: signing-preflight
+    if: ${{ !cancelled() && !failure() }}   # see SIGNING KEY CHECKS
     outputs:
       product_version:      ${{ steps.meta.outputs.product_version }}
       build_number:         ${{ steps.meta.outputs.build_number }}
@@ -71,48 +248,79 @@ jobs:
 
       - name: Compute version
         id: meta
+        env:
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: |
+          set -euo pipefail
           REF_NAME=$(echo "$GITHUB_REF_NAME" | tr '/' '-')
-          echo "ref_name=${REF_NAME}" >> $GITHUB_OUTPUT
+          echo "ref_name=${REF_NAME}" >> "$GITHUB_OUTPUT"
           echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-          IS_TAG=${{ startsWith(github.ref, 'refs/tags/') }}
-
           # Parse PRODUCT_VERSION / BUILD_NUMBER from the git tag.
-          # Supported formats:
-          #   v9.3.1-rc.1  → product_version=9.3.1  build_number=0~rc.1
-          #   v9.3.1       → product_version=9.3.1  build_number=0
-          #   v9.3.1-1     → product_version=9.3.1  build_number=1
+          # Supported formats (upstream's first, then this fork's CE tags):
+          #   v9.3.1-rc.1     → product_version=9.3.1  build_number=0~rc.1
+          #   v9.3.1          → product_version=9.3.1  build_number=0
+          #   v9.3.1-1        → product_version=9.3.1  build_number=1
+          #   v9.3.6-ce.rc.2  → product_version=9.3.6  build_number=0~ce~rc.2
+          #                     (likewise -ce.beta.N / -ce.alpha.N)
+          #   v9.3.6-ce       → product_version=9.3.6  build_number=0~ce
+          #   v9.3.6-ce.1     → product_version=9.3.6  build_number=0~ce.1
           # The "0~" prefix sorts a prerelease before the final release
           # (9.3.1-0~rc.1 < 9.3.1-0) in both dpkg and rpm; a patch build
-          # sorts after it (9.3.1-0 < 9.3.1-1).
+          # sorts after it (9.3.1-0 < 9.3.1-1). The "." or "-" in front of
+          # rc/beta/alpha becomes "~" for the same reason, so a CE
+          # prerelease sorts before its final and a rebuild after it:
+          # 0~ce~rc.1 < 0~ce~rc.2 < 0~ce < 0~ce.1.
+          # v9.3.6-ce.rc.1 predates this and was built as 0~ce.rc.1, which
+          # sorts above 0~ce~rc.N and the final 0~ce (dpkg: above every
+          # 0~ce.N too): its testers reinstall once.
           # Fall back to the VERSION file for non-tag builds.
+          #
+          # Tags outside these formats are refused: release-info, the
+          # package scripts (prerelease = ~rc/~beta/~alpha) and AppStream
+          # would classify them differently, and two spellings of one
+          # version (-ce.rc.1, -ce-rc.1) would build the same package version.
+          if [[ "$IS_TAG" == "true" && ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[1-9][0-9]*|-ce(\.[1-9][0-9]*)?|-(ce\.)?(rc|beta|alpha)\.[1-9][0-9]*)?$ ]]; then
+            echo "::error::Unsupported tag format: $GITHUB_REF_NAME (expected vX.Y.Z, vX.Y.Z-N, vX.Y.Z-rc.N, vX.Y.Z-ce, vX.Y.Z-ce.N or vX.Y.Z-ce.rc.N; beta/alpha like rc)"
+            exit 1
+          fi
+          tilde() { sed -E 's/[.-](alpha|beta|rc)/~\1/g' <<<"$1"; }
           if [[ "$IS_TAG" == "true" && "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-([1-9][0-9]*)$ ]]; then
-            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
-            echo "build_number=${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
+            product_version=${BASH_REMATCH[1]}
+            build_number=${BASH_REMATCH[2]}
           elif [[ "$IS_TAG" == "true" && "$GITHUB_REF_NAME" =~ ^v([^-]+)-(.+)$ ]]; then
-            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
-            echo "build_number=0~${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
+            product_version=${BASH_REMATCH[1]}
+            build_number=0~$(tilde "${BASH_REMATCH[2]}")
           elif [[ "$IS_TAG" == "true" && "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
-            echo "build_number=0" >> $GITHUB_OUTPUT
+            product_version=${BASH_REMATCH[1]}
+            build_number=0
           elif [[ "$IS_TAG" == "true" ]]; then
             echo "::error::Unsupported tag format: $GITHUB_REF_NAME (expected vX.Y.Z or vX.Y.Z-ID)"
             exit 1
           else
-            VERSION_FILE=$(cat VERSION.txt 2>/dev/null | tr -d '[:space:]')
+            VERSION_FILE=$(cat VERSION.txt 2>/dev/null | tr -d '[:space:]' || true)
             # Split like a tag: release PRs carry 9.3.6-rc.1 → version=9.3.6 build=0~rc.1
             if [[ "${VERSION_FILE}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-([1-9][0-9]*)$ ]]; then
-              echo "product_version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-              echo "build_number=${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+              product_version=${BASH_REMATCH[1]}
+              build_number=${BASH_REMATCH[2]}
             elif [[ "${VERSION_FILE}" =~ ^([^-]+)-(.+)$ ]]; then
-              echo "product_version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-              echo "build_number=0~${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+              product_version=${BASH_REMATCH[1]}
+              build_number=0~$(tilde "${BASH_REMATCH[2]}")
             else
-              echo "product_version=${VERSION_FILE}" >> $GITHUB_OUTPUT
-              echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
+              product_version=${VERSION_FILE}
+              build_number=${BUILD_NUMBER}
             fi
           fi
+
+          # The build number is the Debian revision and the RPM release:
+          # dpkg allows only [A-Za-z0-9.+~] there, rpm no "-". Fail here
+          # rather than in packaging, an hour into the build.
+          if [[ ! "$build_number" =~ ^[0-9A-Za-z.+~]+$ ]]; then
+            echo "::error::Build number '$build_number' for $GITHUB_REF_NAME is not a valid package revision (only A-Z a-z 0-9 . + ~)."
+            exit 1
+          fi
+          echo "product_version=${product_version}" >> "$GITHUB_OUTPUT"
+          echo "build_number=${build_number}" >> "$GITHUB_OUTPUT"
 
   # ─────────────────────────────────────────────────────────────
   # BUILD (common / Linux / Docker / WASM)
@@ -136,6 +344,7 @@ jobs:
     name: brand-assets (${{ matrix.brand.name }})
     runs-on: ubuntu-latest
     needs: version
+    if: ${{ !cancelled() && !failure() }}   # see SIGNING KEY CHECKS
     permissions:
       contents: read
       packages: write          # registry build cache only
@@ -219,6 +428,7 @@ jobs:
     name: build-common (${{ matrix.brand.name }})
     runs-on: 'ubuntu-latest'
     needs: [version, brand-assets]
+    if: ${{ !cancelled() && !failure() }}   # see SIGNING KEY CHECKS
     permissions:
       contents: write
       packages: write
@@ -371,6 +581,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   crosscompile-3rdparty-arm64:
     runs-on: windows-2022 # x64 host that cross-compiles to arm64
+    needs: signing-preflight
+    if: ${{ !cancelled() && !failure() }}   # see SIGNING KEY CHECKS
     env:
       PYTHONUTF8: "1"
       DEPOT_TOOLS_WIN_TOOLCHAIN: "0" # V8: use the locally installed VS, not Google's toolchain
@@ -428,6 +640,7 @@ jobs:
     name: build-windows (${{ matrix.arch }}, ${{ matrix.brand.name }})
     runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-2022' }}
     needs: [version, build-common, crosscompile-3rdparty-arm64, brand-assets]
+    if: ${{ !cancelled() && !failure() }}   # see SIGNING KEY CHECKS
     strategy:
       fail-fast: false
       matrix:
@@ -683,6 +896,7 @@ jobs:
     name: build-linux (${{ matrix.arch }}, ${{ matrix.brand.name }})
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     needs: [version, build-common, brand-assets]
+    if: ${{ !cancelled() && !failure() }}   # see SIGNING KEY CHECKS
     permissions:
       contents: write
       packages: write
@@ -696,8 +910,11 @@ jobs:
           - name: euro-office
             company_name: Euro-Office
             product_name: Euro-Office
-            publisher_name: Euro-Office
-            publisher_url: https://github.com/Euro-Office/DesktopEditors
+            # Maintainer/Vendor/Packager of the .deb/.rpm: this fork signs
+            # and publishes them (Maintainer: UnityStack GmbH <packages@unitystack.eu>).
+            publisher_name: UnityStack GmbH
+            publisher_url: https://euro-office.org
+            support_mail: packages@unitystack.eu
             branding_dir: "."
             extra_bake_files_linux: ""
             extra_targets_linux: ""
@@ -820,6 +1037,7 @@ jobs:
           PRODUCT_NAME: ${{ matrix.brand.product_name }}
           PUBLISHER_NAME: ${{ matrix.brand.publisher_name }}
           PUBLISHER_URL: ${{ matrix.brand.publisher_url }}
+          SUPPORT_MAIL: ${{ matrix.brand.support_mail }}
           # ------------------
 
       # On tags the packages go to sign-linux as linux-unsigned-*; it uploads
@@ -843,10 +1061,13 @@ jobs:
   # clearsigned SHA256SUMS-linux-<arch>.txt.asc over every package.
   # The .deb files are not signed one by one: there is no standard
   # per-package signature that apt/dpkg check (debsigs is off by
-  # default). The signed checksums cover them until the apt repository
-  # signs its Release file. Uploads linux-packages-euro-office-<arch>,
-  # the artifact publish-release picks up. Signing does not depend on
-  # the package arch, so both arches sign on x64.
+  # default). A .deb from the release is covered by the signed
+  # checksums, one from the apt repository by its signed Release file
+  # (publish-repo). Uploads linux-packages-euro-office-<arch>, the
+  # artifact publish-release picks up. Both arches build the
+  # arch-independent help packages; only amd64's are kept, so every
+  # release file comes from exactly one artifact. Signing does not
+  # depend on the package arch, so both arches sign on x64.
   # See build/linux/README.md, "Signing in CI (fork)".
   # ─────────────────────────────────────────────────────────────
   sign-linux:
@@ -870,6 +1091,14 @@ jobs:
       # The published public key. Until it is committed, the job verifies
       # against the public part of the imported key and warns.
       PUBLIC_KEY_FILE: build/linux/unitystack-package-signing.asc
+      # Optional repository variables, both 40-digit subkey fingerprints:
+      # the subkey LINUX_GPG_PRIVATE_KEY must hold (it must agree with the
+      # committed build/linux/unitystack-package-signing.ci-subkey), and a
+      # subkey that may sign although the published key lacks it (only
+      # when no published subkey is left). See "Signing key" in
+      # build/linux/README.md.
+      LINUX_GPG_SIGN_SUBKEY: ${{ vars.LINUX_GPG_SIGN_SUBKEY }}
+      LINUX_GPG_ALLOW_UNPUBLISHED_SUBKEY: ${{ vars.LINUX_GPG_ALLOW_UNPUBLISHED_SUBKEY }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -882,6 +1111,18 @@ jobs:
           name: linux-unsigned-${{ env.BRAND }}-${{ matrix.arch }}
           path: dist
 
+      # The help .deb (_all), .rpm (noarch) and .tar.xz (-any) do not depend
+      # on the arch, but each arch builds them, with different bytes under the
+      # same name. Only amd64's are signed, checksummed and released; arm64's
+      # would collide with them in publish-release.
+      - name: Keep arch-independent packages in the amd64 artifact only
+        if: matrix.arch != 'amd64'
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*_all.deb dist/*.noarch.rpm dist/*-any.tar.xz)
+          if [ ${#files[@]} -gt 0 ]; then rm -v -- "${files[@]}"; fi
+
       - name: Install rpm tooling
         run: |
           set -euo pipefail
@@ -892,79 +1133,17 @@ jobs:
           rpm --version
           gpg --version | head -n 1
 
+      # The same import and subkey check as signing-preflight, again: a
+      # re-run of this job can come days after the preflight passed.
+      # --after-build: a subkey with an expiry fails only under FAIL_DAYS
+      # minus RERUN_DAYS (60 days), so a re-run within GitHub's 30 days does
+      # not fail on a subkey the preflight accepted (see SIGNING KEY CHECKS
+      # above).
       - name: Import the signing key
         env:
           LINUX_GPG_PRIVATE_KEY: ${{ secrets.LINUX_GPG_PRIVATE_KEY }}
           LINUX_GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
-        run: |
-          set -euo pipefail
-          umask 077
-          if [ -z "${LINUX_GPG_PRIVATE_KEY:-}" ]; then
-            echo "::error::Secret LINUX_GPG_PRIVATE_KEY is empty or missing in the 'signing' environment (see build/linux/README.md)."
-            exit 1
-          fi
-          case "$LINUX_GPG_PRIVATE_KEY" in
-            *'-----BEGIN PGP PRIVATE KEY BLOCK-----'*) ;;
-            *) echo "::error::LINUX_GPG_PRIVATE_KEY is not an ASCII-armored secret key (gpg --export-secret-subkeys --armor)."
-               exit 1 ;;
-          esac
-
-          export GNUPGHOME="$RUNNER_TEMP/gnupg"
-          mkdir -p "$GNUPGHOME"
-          echo allow-loopback-pinentry > "$GNUPGHOME/gpg-agent.conf"
-          pass_args=()
-          if [ -n "${LINUX_GPG_PASSPHRASE:-}" ]; then
-            printf '%s' "$LINUX_GPG_PASSPHRASE" > "$GNUPGHOME/passphrase"
-            pass_args=(--pinentry-mode loopback --passphrase-file "$GNUPGHOME/passphrase")
-            echo "GPG_PASSPHRASE_FILE=$GNUPGHOME/passphrase" >> "$GITHUB_ENV"
-          fi
-          gpg --batch --quiet "${pass_args[@]}" --import <<<"$LINUX_GPG_PRIVATE_KEY"
-
-          # Exactly one primary key; sign with its newest usable signing
-          # subkey (secret present, not expired/revoked). "<fpr>!" makes
-          # gpg use that exact subkey.
-          colons=$(gpg --batch --with-colons --list-secret-keys)
-          if [ "$(grep -c '^sec:' <<<"$colons")" -ne 1 ]; then
-            echo "::error::LINUX_GPG_PRIVATE_KEY must contain exactly one key."
-            exit 1
-          fi
-          read -r primary_fpr primary_stub sign_fpr < <(awk -F: -v now="$(date +%s)" '
-            $1 == "sec" { rec = "sec"; stub = ($15 == "#"); next }
-            $1 == "ssb" { rec = "ssb"; ok = ($2 !~ /[erd]/ && $12 ~ /s/ && $15 != "#" && ($7 == "" || $7 > now)); created = $6; next }
-            $1 == "fpr" && rec == "sec" { primary = $10 }
-            $1 == "fpr" && rec == "ssb" && ok && created >= best { best = created; sign = $10 }
-            $1 == "fpr" { rec = "" }
-            END { print primary, stub, sign }' <<<"$colons")
-          if [ -z "${sign_fpr:-}" ]; then
-            echo "::error::No usable signing subkey in LINUX_GPG_PRIVATE_KEY (needs a non-expired subkey with the S capability)."
-            exit 1
-          fi
-          if [ "$primary_stub" != 1 ]; then
-            echo "::warning::LINUX_GPG_PRIVATE_KEY contains the primary secret key; export only the signing subkey (gpg --export-secret-subkeys --armor <subkey-fpr>!)."
-          fi
-          echo "Primary key: $primary_fpr"
-          echo "Signing subkey: $sign_fpr"
-
-          # Verify against the published public key when it is committed,
-          # so a mismatch with the secret fails here, not for users.
-          gpg --batch --armor --export "$primary_fpr" > "$RUNNER_TEMP/signing-key.asc"
-          if [ -f "$PUBLIC_KEY_FILE" ]; then
-            if ! gpg --batch --with-colons --show-keys "$PUBLIC_KEY_FILE" | grep -q "^fpr:\{9\}$sign_fpr:"; then
-              echo "::error::$PUBLIC_KEY_FILE does not contain the signing subkey $sign_fpr."
-              exit 1
-            fi
-            cp "$PUBLIC_KEY_FILE" "$RUNNER_TEMP/verify-key.asc"
-          else
-            echo "::warning::$PUBLIC_KEY_FILE is not committed yet; verifying against the imported key."
-            cp "$RUNNER_TEMP/signing-key.asc" "$RUNNER_TEMP/verify-key.asc"
-          fi
-
-          {
-            echo "GNUPGHOME=$GNUPGHOME"
-            echo "PRIMARY_FPR=$primary_fpr"
-            echo "SIGN_FPR=$sign_fpr"
-            echo "VERIFY_KEY=$RUNNER_TEMP/verify-key.asc"
-          } >> "$GITHUB_ENV"
+        run: bash build/linux/import-signing-key.sh --after-build
 
       - name: Sign the RPMs
         run: |
@@ -1015,11 +1194,24 @@ jobs:
       # plain .txt): users then check the hashes in the file they verified,
       # and sha256sum -c reads it directly (skipping the armor lines). The
       # name cannot clash with the Windows SHA256SUMS-windows-<arch>.txt.
+      # The files first get the names GitHub gives release assets (every
+      # character outside [A-Za-z0-9._-], such as the "~" of 0~ce, becomes
+      # "."), so the names in the checksum file are the downloaded ones.
       - name: Write and sign the checksums
         working-directory: dist
         run: |
           set -euo pipefail
           shopt -s nullglob
+          for f in *; do
+            g=$(sed -E 's/[^A-Za-z0-9._-]/./g' <<<"$f")
+            if [ "$g" != "$f" ]; then
+              if [ -e "$g" ]; then
+                echo "::error::Renaming $f to GitHub's asset name $g would overwrite a file."
+                exit 1
+              fi
+              mv -v -- "$f" "$g"
+            fi
+          done
           files=(*.deb *.rpm *.tar.xz)
           if [ ${#files[@]} -eq 0 ]; then
             echo "::error::No packages to checksum."
@@ -1090,6 +1282,7 @@ jobs:
     # label before relying on it - these change over time.
     runs-on: macos-14
     needs: [version, build-common]
+    if: ${{ !cancelled() && !failure() }}   # see SIGNING KEY CHECKS
     strategy:
       fail-fast: false
       matrix:
@@ -1272,8 +1465,11 @@ jobs:
           gh pr comment "$PR" -R "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file comment.md
 
   # ─────────────────────────────────────────────────────────────
-  # Classify the tag: v9.3.4 and its patch builds (v9.3.4-1) are stable;
-  # anything else (v9.3.4-beta.1, v9.3.4-rc.1, ...) is a prerelease.
+  # Classify the tag: v9.3.4 and its patch builds (v9.3.4-1) are stable,
+  # and so are the community edition finals (v9.3.6-ce) and their
+  # rebuilds (v9.3.6-ce.1); anything else (v9.3.4-beta.1, v9.3.4-rc.1,
+  # v9.3.6-ce.rc.1, ...) is a prerelease. Also picks the package
+  # repository channel in publish-repo.
   # ─────────────────────────────────────────────────────────────
   release-info:
     runs-on: ubuntu-latest
@@ -1283,7 +1479,7 @@ jobs:
     steps:
       - id: check
         run: |
-          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[1-9][0-9]*)?$ ]]; then
+          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[1-9][0-9]*|-ce(\.[1-9][0-9]*)?)?$ ]]; then
             echo "stable=true" >> "$GITHUB_OUTPUT"
           else
             echo "stable=false" >> "$GITHUB_OUTPUT"
@@ -1298,6 +1494,13 @@ jobs:
   # A failed or skipped signing job skips this job. macOS is unsigned
   # for now.
   # TODO(signing): macOS (Apple notarization).
+  #
+  # Each artifact lands in its own directory: a file name in two of
+  # them (the arch-independent help packages before sign-linux kept them
+  # in amd64 only) fails the job instead of leaving bytes that match
+  # neither signed checksum file. A release asset is never replaced by
+  # different bytes unless the run was dispatched with replace_assets:
+  # the package repository describes the assets by hash.
   # ─────────────────────────────────────────────────────────────
   publish-release:
     runs-on: ubuntu-latest
@@ -1306,11 +1509,41 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: '*-packages-euro-office-*'
-          path: dist
-          merge-multiple: true
+          path: artifacts
+
+      - name: Collect the release files
+        run: |
+          set -euo pipefail
+          dups=$(find artifacts -type f -printf '%f\n' | sort | uniq -d)
+          if [ -n "$dups" ]; then
+            echo "::error::These files are in more than one artifact: $(tr '\n' ' ' <<<"$dups")"
+            exit 1
+          fi
+          mkdir dist
+          find artifacts -type f -exec cp -t dist {} +
+          cd dist
+          # Every Linux package is listed, with these bytes, in the signed
+          # checksum file of the arch that built it (sha256sum skips the
+          # armor lines and warns about them).
+          shopt -s nullglob
+          sums=(SHA256SUMS-linux-*.txt.asc)
+          if [ ${#sums[@]} -eq 0 ]; then
+            echo "::error::No SHA256SUMS-linux-*.txt.asc in the artifacts."
+            exit 1
+          fi
+          for s in "${sums[@]}"; do
+            sha256sum --quiet --check "$s" 2>&1 | { grep -v 'improperly formatted' || true; }
+          done
+          for f in *.deb *.rpm *.tar.xz; do
+            if ! awk -v f="$f" '$2 == f { found = 1 } END { exit !found }' "${sums[@]}"; then
+              echo "::error::$f is in no SHA256SUMS-linux-*.txt.asc."
+              exit 1
+            fi
+          done
+          ls -l
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1327,16 +1560,303 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           PRERELEASE: ${{ needs.release-info.outputs.stable != 'true' }}
           LATEST: ${{ needs.release-info.outputs.stable == 'true' }}
+          REPLACE_ASSETS: ${{ inputs.replace_assets && 'true' || 'false' }}
         run: |
           set -euo pipefail
           # The CHANGELOG.md section of this tag, written by Euro-Office/release.
           awk -v h="## $GITHUB_REF_NAME" '$0 == h { f = 1; next } f && /^## / { exit } f' src/CHANGELOG.md > notes.md
           printf '\nBuilt from %s@%s, %s\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$RUN_URL" >> notes.md
           flags=(--title "$TITLE" --notes-file notes.md --prerelease="$PRERELEASE" --latest="$LATEST")
-          # Re-runs update the existing release and replace its assets.
-          if gh release view "$GITHUB_REF_NAME" -R "$REPO" >/dev/null 2>&1; then
-            gh release edit "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}"
-            gh release upload "$GITHUB_REF_NAME" -R "$REPO" --clobber dist/*
-          else
+          if ! gh release view "$GITHUB_REF_NAME" -R "$REPO" >/dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}" dist/*
+            exit 0
           fi
+
+          # A re-run: upload what is missing and skip what is there with the
+          # same SHA-256. A rebuild has other bytes (rpmsign signatures
+          # differ), and replacing an asset that the package repository
+          # already describes breaks apt and dnf with a hash mismatch, so
+          # that needs a new tag (v9.3.6-ce.N) or, while the tag is not in
+          # the repository yet, a dispatch with replace_assets.
+          gh release edit "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}"
+          gh api "repos/$REPO/releases/tags/$GITHUB_REF_NAME" \
+            --jq '.assets[] | [.name, (.digest // "")] | @tsv' > assets.tsv
+          upload=() conflicts=()
+          for f in dist/*; do
+            name=$(basename "$f" | sed -E 's/[^A-Za-z0-9._-]/./g')
+            if ! digest=$(awk -F'\t' -v n="$name" '$1 == n { print $2; f = 1 } END { exit !f }' assets.tsv); then
+              upload+=("$f")
+            elif [ "$digest" = "sha256:$(sha256sum "$f" | cut -d' ' -f1)" ]; then
+              echo "unchanged: $name"
+            elif [ "$REPLACE_ASSETS" = true ]; then
+              echo "::warning::Replacing $name (replace_assets)."
+              upload+=("$f")
+            else
+              conflicts+=("$name")
+            fi
+          done
+          if [ ${#conflicts[@]} -gt 0 ]; then
+            echo "::error::Release $GITHUB_REF_NAME has other bytes under these names: ${conflicts[*]}. Cut a new tag, or (only if publish-repo has not published this tag) run the workflow on the tag with replace_assets."
+            exit 1
+          fi
+          if [ ${#upload[@]} -gt 0 ]; then
+            gh release upload "$GITHUB_REF_NAME" -R "$REPO" --clobber "${upload[@]}"
+          fi
+
+  # ─────────────────────────────────────────────────────────────
+  # PUBLISH - signed apt/dnf/zypper repository - tags only
+  #
+  # Adds this tag's .deb/.rpm to the package repository behind
+  # https://packages.euro-office.org/ (GitHub Pages of this repository,
+  # published from the orphan branch `packages`; created on the first
+  # run). build/linux/repo/publish-repo.sh rewrites the indexes in
+  # ./site and signs InRelease/Release.gpg and repomd.xml.asc with the
+  # signing subkey; this job checks the signatures like a client would,
+  # commits and pushes. Stable tags (see release-info) go to the stable
+  # and testing suites, prereleases to testing only.
+  #
+  # The packages themselves are not committed: nginx redirects the pool
+  # paths to the release assets, so the indexes must describe exactly
+  # those bytes. They are therefore downloaded from the release that
+  # publish-release just made, not taken from the linux-packages-*
+  # artifacts. (Until sign-linux kept the arch-independent packages in
+  # amd64 only, both arches built the same _all.deb and the release held
+  # neither build's bytes: the help .deb of v9.3.6-ce.rc.1.)
+  #
+  # Pushes made with GITHUB_TOKEN do not trigger a Pages build
+  # (docs.github.com, "Configuring a publishing source for your GitHub
+  # Pages site"), so the job requests one through the REST API, which
+  # `pages: write` permits, and waits until Pages has built the pushed
+  # commit. Pages can only be enabled once the branch exists: for that
+  # first run, the repository variable PACKAGES_PAGES_BOOTSTRAP=true turns
+  # a refused request into a warning.
+  #
+  # One publish at a time: the branch is read, rebuilt and pushed, so a
+  # second tag must wait for the first. `queue: max` keeps every waiting
+  # tag; the default would cancel all but the newest pending one.
+  # (actionlint 1.7.12 does not know `queue` yet, rhysd/actionlint#657;
+  # GitHub's own workflow parser accepts it.)
+  # ─────────────────────────────────────────────────────────────
+  publish-repo:
+    runs-on: ubuntu-24.04      # pinned: the repository tools come from its apt
+    needs: [release-info, publish-release]
+    if: startsWith(github.ref, 'refs/tags/')
+    environment: signing
+    permissions:
+      contents: write          # read the release, push the packages branch
+      pages: write             # request the Pages build
+    concurrency:
+      group: package-repo
+      cancel-in-progress: false
+      queue: max
+    env:
+      CHANNEL: ${{ needs.release-info.outputs.stable == 'true' && 'stable' || 'prerelease' }}
+      SITE_BRANCH: packages
+      # Same key file, subkey check and designation as sign-linux.
+      PUBLIC_KEY_FILE: build/linux/unitystack-package-signing.asc
+      LINUX_GPG_SIGN_SUBKEY: ${{ vars.LINUX_GPG_SIGN_SUBKEY }}
+      LINUX_GPG_ALLOW_UNPUBLISHED_SUBKEY: ${{ vars.LINUX_GPG_ALLOW_UNPUBLISHED_SUBKEY }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: false
+          sparse-checkout: build/linux
+          persist-credentials: false
+
+      # The AppStream icons come from the desktop-apps submodule. Fetch
+      # only its Linux packaging tree, at the commit this tag pins.
+      - name: Locate the desktop-apps submodule
+        id: desktop-apps
+        run: |
+          set -euo pipefail
+          url=$(git config --file .gitmodules submodule.desktop-apps.url)
+          url=${url%.git}
+          echo "repository=${url#https://github.com/}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD:desktop-apps)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ steps.desktop-apps.outputs.repository }}
+          ref: ${{ steps.desktop-apps.outputs.sha }}
+          path: desktop-apps
+          sparse-checkout: package/common/linux
+          persist-credentials: false
+
+      # Same package list as build/linux/repo/test/builder.Dockerfile, the
+      # image the repository tests run in.
+      - name: Install the repository tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            apt-utils createrepo-c appstream gnupg xz-utils jq python3 m4 rpm
+          apt-ftparchive --version | head -n 1
+          createrepo_c --version
+          appstreamcli --version
+
+      # The token goes into a one-off http.extraheader (like
+      # actions/checkout), never into the remote URL or .git/config.
+      - name: Check out the packages branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          git_auth=(-c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth")
+          url="https://github.com/$GITHUB_REPOSITORY.git"
+          # ls-remote --exit-code returns 2 only for "no such branch"; any
+          # other failure must not start a fresh branch.
+          rc=0
+          git "${git_auth[@]}" ls-remote --exit-code --heads "$url" "$SITE_BRANCH" > /dev/null || rc=$?
+          case $rc in
+            0) git "${git_auth[@]}" clone --quiet --depth 1 --single-branch --branch "$SITE_BRANCH" "$url" site ;;
+            2) echo "::notice::Branch $SITE_BRANCH does not exist yet; starting it as an orphan branch."
+               git init --quiet --initial-branch "$SITE_BRANCH" site
+               git -C site remote add origin "$url" ;;
+            *) echo "::error::git ls-remote $url failed ($rc)."
+               exit "$rc" ;;
+          esac
+          git -C site log --oneline -1 2>/dev/null || echo "(empty branch)"
+
+      - name: Download the release packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" \
+            --dir packages --pattern '*.deb' --pattern '*.rpm'
+          ls -l packages
+
+      # The same import and subkey check as sign-linux
+      # (build/linux/import-signing-key.sh --after-build).
+      - name: Import the signing key
+        env:
+          LINUX_GPG_PRIVATE_KEY: ${{ secrets.LINUX_GPG_PRIVATE_KEY }}
+          LINUX_GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
+        run: bash build/linux/import-signing-key.sh --after-build
+
+      # publish-repo.sh only gets SIGN_FPR and GNUPGHOME, so a passphrase
+      # is preset in gpg-agent: every gpg call of the script then signs
+      # without a pinentry. A test signature proves it before the build.
+      - name: Unlock the signing subkey
+        run: |
+          set -euo pipefail
+          if [ -n "${GPG_PASSPHRASE_FILE:-}" ]; then
+            echo allow-preset-passphrase >> "$GNUPGHOME/gpg-agent.conf"
+            gpg-connect-agent --quiet reloadagent /bye > /dev/null
+            grip=$(gpg --batch --with-colons --with-keygrip --list-secret-keys "$SIGN_FPR!" |
+                   awk -F: -v fpr="$SIGN_FPR" '$1 == "fpr" { f = $10 } $1 == "grp" && f == fpr { print $10; exit }')
+            "$(gpgconf --list-dirs libexecdir)/gpg-preset-passphrase" --preset "$grip" < "$GPG_PASSPHRASE_FILE"
+          fi
+          echo probe | gpg --batch --pinentry-mode error --local-user "$SIGN_FPR!" --clearsign > /dev/null
+
+      - name: Build the repository (publish-repo.sh)
+        env:
+          GH_TOKEN: ${{ github.token }}   # release asset digests
+        run: |
+          bash build/linux/repo/publish-repo.sh \
+            --tag "$GITHUB_REF_NAME" \
+            --channel "$CHANNEL" \
+            --packages packages \
+            --site site \
+            --repo "$GITHUB_REPOSITORY"
+
+      # Like a client: a keyring with only the published public key, and
+      # every suite this tag went to.
+      - name: Verify the repository signatures
+        working-directory: site
+        run: |
+          set -euo pipefail
+          vhome="$RUNNER_TEMP/gnupg-verify"
+          mkdir -m 700 "$vhome"
+          gpg --homedir "$vhome" --batch --quiet --import "$VERIFY_KEY"
+          check() {   # check <signature> [<signed file>]
+            local status
+            if [ ! -s "$1" ] || ! status=$(gpg --homedir "$vhome" --batch --status-fd 1 --verify "$@" 2>/dev/null) ||
+               ! grep -q "^\[GNUPG:\] VALIDSIG $SIGN_FPR " <<<"$status"; then
+              echo "::error::$1 is missing or not signed by $SIGN_FPR."
+              exit 1
+            fi
+            echo "OK $1"
+          }
+          suites=(testing)
+          if [ "$CHANNEL" = stable ]; then suites+=(stable); fi
+          for s in "${suites[@]}"; do
+            check "apt/dists/$s/InRelease"
+            check "apt/dists/$s/Release.gpg" "apt/dists/$s/Release"
+            check "rpm/$s/repodata/repomd.xml.asc" "rpm/$s/repodata/repomd.xml"
+          done
+          test -f .nojekyll || { echo "::error::site/.nojekyll is missing (Pages would run Jekyll)."; exit 1; }
+
+      - name: Remove the signing key
+        if: always()
+        run: |
+          GNUPGHOME="$RUNNER_TEMP/gnupg" gpgconf --kill all 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/gnupg" "$RUNNER_TEMP/gnupg-verify"
+
+      - name: Commit and push the packages branch
+        id: push
+        working-directory: site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git add --all
+          if git diff --cached --quiet; then
+            echo "::notice::The repository already contains $GITHUB_REF_NAME; nothing to push."
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit --quiet -m "chore(repo): publish $GITHUB_REF_NAME"
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+            push --quiet origin "HEAD:refs/heads/$SITE_BRANCH"
+          git log -1 --format='%H %s'
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # A 4xx means Pages is not set up: an error, unless the variable
+      # PACKAGES_PAGES_BOOTSTRAP is "true" (the first publish, which creates
+      # the branch Pages is then pointed at). Then waits until Pages has
+      # built the pushed commit, so a green run means the site is live.
+      - name: Request a GitHub Pages build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BOOTSTRAP: ${{ vars.PACKAGES_PAGES_BOOTSTRAP }}
+          PUSHED: ${{ steps.push.outputs.pushed }}
+          PUSHED_SHA: ${{ steps.push.outputs.sha }}
+        run: |
+          set -uo pipefail
+          if out=$(gh api -X POST "repos/$GITHUB_REPOSITORY/pages/builds" 2>&1); then
+            echo "$out"
+          elif grep -q '(HTTP 4[0-9][0-9])' <<<"$out" && [ "${BOOTSTRAP:-}" = true ]; then
+            echo "::warning::GitHub Pages build not requested: $out. Enable Pages for branch '$SITE_BRANCH' (/) in the repository settings, delete the variable PACKAGES_PAGES_BOOTSTRAP and re-run this job."
+            exit 0
+          elif grep -q '(HTTP 4[0-9][0-9])' <<<"$out"; then
+            echo "::error::GitHub Pages build not requested: $out. Is Pages enabled for branch '$SITE_BRANCH' (/)? For the very first publish set the repository variable PACKAGES_PAGES_BOOTSTRAP=true (see build/linux/README.md)."
+            exit 1
+          else
+            echo "::error::GitHub Pages build request failed: $out"
+            exit 1
+          fi
+          if [ "${PUSHED:-}" != true ]; then
+            exit 0
+          fi
+          for _ in $(seq 60); do
+            sleep 10
+            build=$(gh api "repos/$GITHUB_REPOSITORY/pages/builds/latest" --jq '[.status, .commit] | @tsv' 2>&1) || build="? $build"
+            echo "latest Pages build: $build"
+            read -r status commit <<<"$build"
+            if [ "$commit" = "$PUSHED_SHA" ] && [ "$status" = built ]; then
+              exit 0
+            elif [ "$commit" = "$PUSHED_SHA" ] && [ "$status" = errored ]; then
+              echo "::error::GitHub Pages failed to build $PUSHED_SHA."
+              exit 1
+            fi
+          done
+          echo "::error::GitHub Pages did not build $PUSHED_SHA within 10 minutes; the packages branch is pushed, the site may still be stale."
+          exit 1
