@@ -942,7 +942,8 @@ apt/dists/<suite>/            InRelease, Release, Release.gpg; main/binary-{amd6
 apt/icons/euro-office-256.png AppStream icon
 rpm/euro-office{,-testing}.repo
 rpm/<channel>/repodata/       repomd.xml, repomd.xml.asc, repomd.xml.key, ...
-.state/                       per-release fragments the indexes are rebuilt from
+macos/appcast{,-testing}.xml  Sparkle feeds of the macOS app (build/macos/README.md, "Automatic updates")
+.state/                       per-release fragments the indexes and feeds are rebuilt from
 ```
 
 The nginx of `packages.unitystack.eu` (fluxcd-org-apps) serves the branch
@@ -1000,6 +1001,12 @@ uploaded file, which replaces the `~` of the package version with `.`, so
   package files the indexes name, which nginx redirects. An entry keeps its
   date while its content (for a directory: the names in it) stays the same
   (`.state/listing.tsv`), so an unchanged tree gives the same listings.
+- Adds the tag's macOS update (`--macos-update`, `--macos-dmg`,
+  `--macos-notes`) to `.state/macos/` and writes the Sparkle feeds
+  `macos/appcast.xml` and `macos/appcast-testing.xml` from it with
+  `build/macos/appcast.py`, which first checks the update's EdDSA signature
+  on the DMG of the release (see "Automatic updates (Sparkle)" in
+  [build/macos/README.md](../macos/README.md#automatic-updates-sparkle)).
 - Writes `.state/format`. A site written by a newer `publish-repo.sh` (a
   higher format) is refused, so re-running `publish-repo` of an older tag
   after the tooling changed cannot rebuild the site with the older script;

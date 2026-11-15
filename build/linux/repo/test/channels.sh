@@ -138,7 +138,7 @@ for b in broken-deb broken-rpm; do
       --asset-map "$w/assets/$b.tsv" 2>"$w/log" || fail "$b accepted"
   grep -q 'is damaged' "$w/log" || fail "$b: $(cat "$w/log")"
 done
-mkdir -p "$site/.state" && echo 2 > "$site/.state/format"
+mkdir -p "$site/.state" && echo 3 > "$site/.state/format"
 ! "$repo/publish-repo.sh" --tag v9.3.6-ce --channel stable --packages "$w/pkgs/v9.3.6-ce" \
     --site "$site" --asset-map "$w/assets/v9.3.6-ce.tsv" 2>"$w/log" || fail "newer .state format accepted"
 grep -q 'newer publish-repo.sh' "$w/log" || fail "format: $(cat "$w/log")"

@@ -8,7 +8,8 @@
 #                   [--asset-map <file>] [--repo owner/name] \
 #                   [--base-url https://packages.unitystack.eu/euro-office] \
 #                   [--key-url https://packages.unitystack.eu/keys/unitystack.asc] \
-#                   [--date YYYY-MM-DD]
+#                   [--date YYYY-MM-DD] \
+#                   [--macos-update <json> --macos-dmg <dmg> [--macos-notes <html>]]
 #
 # --base-url is where the site is served, --key-url where the signing key is:
 # UnityStack's key, the same for its other products' repositories, so it is
@@ -36,6 +37,14 @@
 #   testing  = stable + prerelease
 # Each keeps its newest $KEEP releases (by package version) in the indexes.
 #
+# The same site carries the Sparkle appcasts of the macOS app, macos/appcast.xml
+# (stable) and macos/appcast-testing.xml (stable + prerelease), written by
+# build/macos/appcast.py from one fragment per release in .state/macos/. With
+# --macos-update (sign-macos's update description) and --macos-dmg (the DMG
+# downloaded from the release) this tag's update is added, after appcast.py
+# checked its EdDSA signature on those bytes; without them the appcasts are
+# written again from .state/macos/ as they were.
+#
 # The new site is built in a temporary directory, checked (gpgv), and only
 # then copied over <site> (everything except .git), so an aborted run leaves
 # <site> as it was and no index refers to a file that is not there.
@@ -53,6 +62,8 @@
 #   KEY_FILE             public key to publish (default: ../unitystack-package-signing.asc)
 #   ICON_256             remote AppStream icon (default: desktop-apps icons-eo/256x256.png)
 #   GH_TOKEN             for `gh api` when --asset-map is not given
+#   SPARKLE_PUBLIC_KEY   public EdDSA key the macOS update must verify with
+#                        (default: build/macos/sparkle-ed25519.pub)
 #   ALLOW_OLD_SCHEME=1   accept a 0~ce.rc.N version (tests on throwaway sites)
 #
 # Tools: apt-ftparchive (apt-utils), dpkg-deb, rpm, createrepo_c, mergerepo_c
@@ -70,12 +81,15 @@ ARCHES=(amd64 arm64)
 KEY_FILE=${KEY_FILE:-$here/../unitystack-package-signing.asc}
 ICON_256=${ICON_256:-$src_root/desktop-apps/package/common/linux/icons-eo/256x256.png}
 METAINFO_M4=${METAINFO_M4:-$here/../package/common/linux/metainfo.xml.m4}
+SPARKLE_PUBLIC_KEY=${SPARKLE_PUBLIC_KEY:-$src_root/build/macos/sparkle-ed25519.pub}
 # Layout of .state/ and of the files generated from it. Bump it when a change
 # of the fragments, templates or generated files must not be undone by a
 # re-run of an older tag (whose checkout has the older script).
-STATE_FORMAT=1
+# 2: macos/ and .state/macos/ (an older script would drop them).
+STATE_FORMAT=2
 
 tag='' channel='' packages='' site='' asset_map='' repo=UnityStack/DesktopEditors
+macos_update='' macos_dmg='' macos_notes=''
 base_url=https://packages.unitystack.eu/euro-office
 key_url=https://packages.unitystack.eu/keys/unitystack.asc date=$(date -u +%F)
 
@@ -97,7 +111,10 @@ while [ $# -gt 0 ]; do
     --base-url) base_url=${2%/}; shift 2 ;;
     --key-url) key_url=$2; shift 2 ;;
     --date) date=$2; shift 2 ;;
-    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+    --macos-update) macos_update=$2; shift 2 ;;
+    --macos-dmg) macos_dmg=$2; shift 2 ;;
+    --macos-notes) macos_notes=$2; shift 2 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -110,6 +127,10 @@ case "$channel" in stable|prerelease) ;; *) die "--channel must be stable or pre
 [[ $date =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "--date must be YYYY-MM-DD"
 [ -d "$packages" ] || die "--packages $packages is not a directory"
 [ -f "$KEY_FILE" ] || die "public key $KEY_FILE not found"
+if [ -n "$macos_update$macos_dmg$macos_notes" ]; then
+  [ -f "$macos_update" ] && [ -f "$macos_dmg" ] || die "--macos-update and --macos-dmg must both name files"
+  [ -z "$macos_notes" ] || [ -f "$macos_notes" ] || die "--macos-notes $macos_notes is not a file"
+fi
 [[ ${SIGN_FPR:-} =~ ^[0-9A-Fa-f]{40}$ ]] || die "SIGN_FPR must be the 40-digit fingerprint of the signing key"
 for t in apt-ftparchive dpkg-deb dpkg rpm createrepo_c mergerepo_c gpg gpgv jq python3 gzip xz sha256sum sha512sum; do
   command -v "$t" >/dev/null || die "$t is not installed"
@@ -587,6 +608,19 @@ for ch in stable testing; do
     keep_files_of "$site/rpm/$ch" "$out" "${old[@]}"
   done
 done
+
+# ── macOS appcasts (Sparkle) ─────────────────────────────────────
+# appcast.py checks the update (signature on the release DMG, version, the
+# feed the app reads) before it writes its fragment to .state/macos/.
+appcast_args=(--state "$new/.state/macos" --out "$new/macos" --base-url "$base_url"
+              --keep "$KEEP" --now "$(date -u +%s)")
+if [ -n "$macos_update" ]; then
+  appcast_args+=(--update "$macos_update" --dmg "$macos_dmg" --tag "$tag" --channel "$channel"
+                 --public-key "$SPARKLE_PUBLIC_KEY")
+  [ -z "$macos_notes" ] || appcast_args+=(--notes "$macos_notes")
+fi
+python3 -I "$src_root/build/macos/appcast.py" publish "${appcast_args[@]}" >&2 \
+  || die "the macOS update of $tag was not added to the appcasts"
 
 # ── Repository files, README.txt and the listings ────────────────
 render() {   # <template> <output> [KEY=VALUE...]

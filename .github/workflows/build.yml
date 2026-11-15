@@ -1437,11 +1437,23 @@ jobs:
   # macos-packages-euro-office-arm64, the artifact publish-release picks
   # up. Secrets and setup: build/macos/README.md, "Signing and
   # notarization".
+  #
+  # Automatic updates (Sparkle): before signing, sign.sh writes the feed
+  # (stable or testing, from release-info), the committed public EdDSA key
+  # build/macos/sparkle-ed25519.pub, SUEnableAutomaticChecks and the
+  # CFBundleVersion of the tag (appcast.py bundle-version) into the app's
+  # Info.plist. After stapling, build/macos/sparkle-sign.sh signs the final
+  # DMG with Sparkle's sign_update (SPARKLE_ED_PRIVATE_KEY), checks the
+  # signature against the committed key and uploads the update description
+  # as macos-update-euro-office-arm64, which publish-repo adds to the
+  # appcasts. A missing key, or a tag outside the CE formats (vX.Y.Z-ce,
+  # -ce.N, -ce.rc.N), fails the job before anything is signed. See
+  # build/macos/README.md, "Automatic updates (Sparkle)".
   # ─────────────────────────────────────────────────────────────
   sign-macos:
     name: sign-macos (arm64)
     runs-on: macos-14          # same image as build-macos
-    needs: build-macos
+    needs: [release-info, build-macos]
     if: startsWith(github.ref, 'refs/tags/')
     environment: signing
     permissions:
@@ -1449,12 +1461,53 @@ jobs:
       actions: read
     env:
       BRAND: euro-office
+      # The appcasts publish-repo writes to the packages branch, served at
+      # https://packages.unitystack.eu/euro-office/macos/ (appcast.py).
+      UPDATE_FEED: https://packages.unitystack.eu/euro-office/macos/${{ needs.release-info.outputs.stable == 'true' && 'appcast.xml' || 'appcast-testing.xml' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: false
           sparse-checkout: build/macos
           persist-credentials: false
+
+      # sign_update comes from the Sparkle the app bundles (2.0.0, in the
+      # desktop-apps submodule): fetch only its tools, at the commit this
+      # tag pins.
+      - name: Locate the desktop-apps submodule
+        id: desktop-apps
+        run: |
+          set -euo pipefail
+          url=$(git config --file .gitmodules submodule.desktop-apps.url)
+          url=${url%.git}
+          echo "repository=${url#https://github.com/}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD:desktop-apps)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ steps.desktop-apps.outputs.repository }}
+          ref: ${{ steps.desktop-apps.outputs.sha }}
+          path: desktop-apps
+          sparse-checkout: macos/Vendor/Sparkle/bin
+          persist-credentials: false
+
+      # Before the hour of signing and notarizing: the tag is a CE tag
+      # (macOS updates exist only for those; appcast.py refuses vX.Y.Z,
+      # vX.Y.Z-N and vX.Y.Z-rc.N, whose CFBundleVersion a CE tag already
+      # has), and the secret is set and belongs to the committed public key
+      # (prints nothing secret).
+      - name: CFBundleVersion of the tag
+        id: bundle-version
+        run: |
+          set -euo pipefail
+          value=$(python3 -I build/macos/appcast.py bundle-version "$GITHUB_REF_NAME")
+          echo "CFBundleVersion of $GITHUB_REF_NAME: $value"
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+      - name: Check the Sparkle key
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: python3 -I build/macos/appcast.py check-key --public-key build/macos/sparkle-ed25519.pub
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -1469,6 +1522,7 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          BUNDLE_VERSION: ${{ steps.bundle-version.outputs.value }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -1478,7 +1532,9 @@ jobs:
             exit 1
           fi
           bash build/macos/sign.sh --input "${dmgs[0]}" --output "dist/$(basename "${dmgs[0]}")" \
-            --work-dir "$RUNNER_TEMP/macos-signing" --smoke-test
+            --work-dir "$RUNNER_TEMP/macos-signing" --smoke-test \
+            --update-feed "$UPDATE_FEED" --update-key build/macos/sparkle-ed25519.pub \
+            --bundle-version "$BUNDLE_VERSION"
 
       # sign.sh restores the keychain search list and deletes its keychain
       # ($RUNNER_TEMP/eo-signing-keychain.*) and work directory itself; this
@@ -1506,10 +1562,42 @@ jobs:
           shasum -a 256 -- *.dmg > SHA256SUMS-macos-arm64.txt
           cat SHA256SUMS-macos-arm64.txt
 
+      # The final DMG under its release asset name, so the signature is of
+      # the bytes users download. The key goes to sign_update in a mode 600
+      # file under $RUNNER_TEMP/sparkle-sign.*, removed by the script and
+      # again below. Not in dist/: the update description is no release
+      # asset, publish-repo reads it from its own artifact.
+      - name: Sign the update for Sparkle (sparkle-sign.sh)
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dmgs=(dist/*.dmg)
+          if [ ${#dmgs[@]} -ne 1 ]; then
+            echo "::error::Expected one .dmg in dist, found ${#dmgs[@]}."
+            exit 1
+          fi
+          bash build/macos/sparkle-sign.sh --dmg "${dmgs[0]}" --tag "$GITHUB_REF_NAME" \
+            --sign-update desktop-apps/macos/Vendor/Sparkle/bin/sign_update \
+            --out sparkle/sparkle-update-macos-arm64.json
+          cat sparkle/sparkle-update-macos-arm64.json
+
+      - name: Remove the Sparkle key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP"/sparkle-sign.*
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: macos-packages-${{ env.BRAND }}-arm64
           path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: macos-update-${{ env.BRAND }}-arm64
+          path: sparkle/sparkle-update-macos-arm64.json
           if-no-files-found: error
           retention-days: 30
 
@@ -1699,7 +1787,7 @@ jobs:
           fi
 
   # ─────────────────────────────────────────────────────────────
-  # PUBLISH - signed apt/dnf/zypper repository - tags only
+  # PUBLISH - signed apt/dnf/zypper repository and macOS appcasts - tags only
   #
   # Adds this tag's .deb/.rpm to the package repository behind
   # https://packages.unitystack.eu/euro-office/ (GitHub Pages of this
@@ -1711,6 +1799,14 @@ jobs:
   # subkey; this job checks the signatures like a client would, commits
   # and pushes. Stable tags (see release-info) go to the stable and
   # testing suites, prereleases to testing only.
+  #
+  # The same branch carries the Sparkle appcasts of the macOS app,
+  # macos/appcast.xml (stable) and macos/appcast-testing.xml (stable and
+  # prerelease): publish-repo.sh hands sign-macos's update description
+  # (macos-update-euro-office-arm64), the DMG downloaded from the release
+  # and the release notes to build/macos/appcast.py, which checks that the
+  # EdDSA signature verifies the release asset with the committed public key
+  # before it adds the item. The item links to the release asset.
   #
   # The packages themselves are not committed: nginx redirects the pool
   # paths to the release assets, so the indexes must describe exactly
@@ -1757,7 +1853,9 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: false
-          sparse-checkout: build/linux
+          sparse-checkout: |
+            build/linux
+            build/macos
           persist-credentials: false
 
       # The AppStream icons come from the desktop-apps submodule. Fetch
@@ -1825,6 +1923,26 @@ jobs:
             --dir packages --pattern '*.deb' --pattern '*.rpm'
           ls -l packages
 
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: macos-update-euro-office-arm64
+          path: macos-update
+
+      # The DMG as users download it (appcast.py checks the signature on
+      # these bytes) and the release notes as GitHub renders them, which
+      # Sparkle shows in its update window.
+      - name: Download the macOS update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          asset=$(jq -er .asset macos-update/sparkle-update-macos-arm64.json)
+          gh release download "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" \
+            --dir macos-update/dmg --pattern "$asset"
+          gh api -H 'Accept: application/vnd.github.html+json' \
+            "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" --jq .body_html > macos-update/notes.html
+          ls -l macos-update macos-update/dmg
+
       # The same import and subkey check as sign-linux
       # (build/linux/import-signing-key.sh --after-build).
       - name: Import the signing key
@@ -1857,7 +1975,10 @@ jobs:
             --channel "$CHANNEL" \
             --packages packages \
             --site site \
-            --repo "$GITHUB_REPOSITORY"
+            --repo "$GITHUB_REPOSITORY" \
+            --macos-update macos-update/sparkle-update-macos-arm64.json \
+            --macos-dmg "macos-update/dmg/$(jq -er .asset macos-update/sparkle-update-macos-arm64.json)" \
+            --macos-notes macos-update/notes.html
 
       # Like a client: a keyring with only the published public key, and
       # every suite this tag went to.
@@ -1885,6 +2006,16 @@ jobs:
             check "rpm/$s/repodata/repomd.xml.asc" "rpm/$s/repodata/repomd.xml"
           done
           test -f .nojekyll || { echo "::error::site/.nojekyll is missing (Pages would run Jekyll)."; exit 1; }
+          # This tag's DMG in the appcasts its channel reaches.
+          feeds=(macos/appcast-testing.xml)
+          if [ "$CHANNEL" = stable ]; then feeds+=(macos/appcast.xml); fi
+          sig=$(jq -er .ed_signature ../macos-update/sparkle-update-macos-arm64.json)
+          for f in "${feeds[@]}"; do
+            python3 -I -c 'import sys, xml.etree.ElementTree as ET; ET.parse(sys.argv[1])' "$f" ||
+              { echo "::error::$f is not well-formed XML."; exit 1; }
+            grep -qF "sparkle:edSignature=\"$sig\"" "$f" || { echo "::error::$f lacks $GITHUB_REF_NAME."; exit 1; }
+            echo "OK $f"
+          done
 
       - name: Remove the signing key
         if: always()

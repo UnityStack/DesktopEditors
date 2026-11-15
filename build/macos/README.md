@@ -156,8 +156,9 @@ instead of `macos-packages-...`, and the `sign-macos` job in
    search list for the run and checks that it holds one valid
    `Developer ID Application` identity of team `APPLE_TEAM_ID` (only with
    `GITHUB_ACTIONS=true`; see [Running it locally](#running-it-locally-without-a-certificate)),
-2. unpacks the DMG and creates the script caches (see
-   [Script caches](#script-caches)),
+2. unpacks the DMG, writes the update settings into the app's `Info.plist`
+   (`sparkle-configure.sh`, see [Automatic updates](#automatic-updates-sparkle))
+   and creates the script caches (see [Script caches](#script-caches)),
 3. signs every Mach-O inside-out with the hardened runtime, a secure
    timestamp and the entitlements in `entitlements/`: the loose libraries and
    executables (the `converter/` dylibs and `x2t`, the helpers' `MacOS/system`
@@ -186,8 +187,10 @@ instead of `macos-packages-...`, and the `sign-macos` job in
 The job then names the DMG like the release asset GitHub makes of it, writes
 `SHA256SUMS-macos-arm64.txt` and uploads both as
 `macos-packages-euro-office-arm64`, which `publish-release` attaches to the
-release. If `sign-macos` fails or is skipped, `publish-release` does not run.
-On every exit, cancelled runs included, the script puts the previous
+release. It also signs that DMG for Sparkle and uploads the update
+description as `macos-update-euro-office-arm64` (see
+[Automatic updates](#automatic-updates-sparkle)). If `sign-macos` fails or
+is skipped, `publish-release` does not run. On every exit, cancelled runs included, the script puts the previous
 keychain search list back and deletes the keychain
 (`$RUNNER_TEMP/eo-signing-keychain.*`) and its work directory
 (`$RUNNER_TEMP/macos-signing`, which holds the decoded API key); an
@@ -383,8 +386,240 @@ does that only on GitHub Actions (`GITHUB_ACTIONS=true`) and otherwise stops
 before it creates or reads anything; on a Mac, sign with an identity that is
 already in your keychains (`--identity`, see step 6 above).
 
-### Not part of this
+## Automatic updates (Sparkle)
 
-Automatic updates (Sparkle, whose framework the app already contains with
-`SUEnableAutomaticChecks` off) are a later step: an appcast, an EdDSA key and
-signed update archives.
+Tag builds update themselves: the app reads an appcast (an RSS feed) about
+once a day, and when it lists a newer build, Sparkle offers it, downloads
+the signed and notarized DMG from the GitHub release and replaces the app.
+Linux gets its updates from the package repositories instead
+([build/linux/README.md](../linux/README.md#package-repositories)).
+
+### The app
+
+The app bundles Sparkle 2.0.0 (`desktop-apps/macos/Vendor/Sparkle`, with
+its `sign_update`, `generate_keys` and `generate_appcast`). `Main.storyboard`
+creates an `SUUpdater` (Sparkle 1's interface, kept by Sparkle 2) without a
+delegate, and nothing in the app sets a feed at run time. Upstream's
+`Info.plist` has `SUEnableAutomaticChecks` false,
+`SUScheduledCheckInterval` 86400 (one day) and no feed or key, so it never
+checks. Before signing, `sign.sh` (`--update-feed`, `--update-key`,
+`--bundle-version`) runs `sparkle-configure.sh`, which writes into the
+app's `Info.plist`:
+
+| Key | Value |
+|---|---|
+| `SUFeedURL` | the stable or the testing appcast (below) |
+| `SUPublicEDKey` | `build/macos/sparkle-ed25519.pub`, the public EdDSA key |
+| `SUEnableAutomaticChecks` | `true`; with the key in `Info.plist` Sparkle does not ask the user first |
+| `CFBundleVersion` | the tag's build number (below) |
+
+The submodule is not changed; the signature covers the result. In CI the
+three options are required: without them, or with only some, `sign.sh`
+fails before it signs anything, and so does a missing
+`sparkle-ed25519.pub`. Branch and PR builds are not signed and keep
+upstream's settings, so they do not update.
+
+Not possible without a change in desktop-apps:
+
+- The *Check for Updates…* item of the app menu is `hidden` in
+  `Main.storyboard` and the app never shows it, so users cannot check by
+  hand; the daily check is the only one.
+- Sparkle 2.0.0 is older than 2.7.2, which fixes CVE-2025-10015 and
+  CVE-2025-10016 (local privilege escalation through Sparkle's
+  `Downloader` XPC service and its `Autoupdate` installer). Both ship in the
+  bundle already; automatic updates make the installer run. Updating
+  Sparkle means updating `desktop-apps/macos/Vendor/Sparkle`.
+
+### Versions
+
+Sparkle offers an item only when its `sparkle:version` is above the
+running app's `CFBundleVersion`. Upstream's is a fixed build number (544 in
+v9.3.6-ce.rc.1, the same for every build), so `appcast.py bundle-version`
+derives one integer from the tag: the digits `X YY ZZ S NNN` for `vX.Y.Z`,
+stage `S` (1 alpha, 2 beta, 3 rc, 5 final) and number `NNN` (the `N` of
+`rc.N`, or of a rebuild `-ce.N`, 0 for the final):
+
+| Tag | `CFBundleVersion` |
+|---|---|
+| `v9.3.6-ce.rc.2` | 903063002 |
+| `v9.3.6-ce` | 903065000 |
+| `v9.3.6-ce.1` | 903065001 |
+| `v9.3.7-ce.rc.1` | 903073001 |
+
+Within the CE tags that orders like the package versions
+(`0~ce~rc.2 < 0~ce < 0~ce.1`). `X` up to 20, `Y` and `Z` up to 99 and
+`N` up to 999 fit (below 2^31). Only CE tags (`vX.Y.Z-ce`, `-ce.N`,
+`-ce.rc.N`, beta and alpha like rc) get macOS updates: the upstream formats
+the version job also accepts (`vX.Y.Z`, `vX.Y.Z-N`, `vX.Y.Z-rc.N`) would get
+the number of a CE tag (`v9.3.6` and `v9.3.6-ce` are both 903065000), so
+`sign-macos` fails on them in its first steps, and so does a tag outside the
+limits. `CFBundleShortVersionString` stays `9.3.6`
+(`apply-branding.sh`); when both short versions are the same, Sparkle adds
+the build numbers ("9.3.6 (903065000)", you have "9.3.6 (903063002)"). The
+About dialog shows `CFBundleVersion` too, after a click on its version line.
+v9.3.6-ce.rc.1 has no feed and cannot update itself: its testers install
+the next build once by hand.
+
+### Feeds and channels
+
+| Feed | Items | Read by |
+|---|---|---|
+| `https://packages.unitystack.eu/euro-office/macos/appcast.xml` | stable releases | apps from stable tags (`v9.3.6-ce`, `v9.3.6-ce.1`) |
+| `https://packages.unitystack.eu/euro-office/macos/appcast-testing.xml` | stable and prerelease | apps from prerelease tags (`-ce.rc.N`, `-ce.beta.N`, `-ce.alpha.N`) |
+
+Like the Linux channels (`release-info` decides): a tester's rc build moves
+to newer rcs and to the final, and the final reads the stable feed from
+then on. Two feeds rather than Sparkle's `sparkle:channel` because the app
+cannot opt in to a channel: that needs `allowedChannelsForUpdater:` of a
+`SPUUpdaterDelegate`, and the storyboard's `SUUpdater` has no delegate.
+Each feed keeps the newest 10 items (`KEEP` of `publish-repo.sh`), newest
+first. An item carries `sparkle:version`, `sparkle:shortVersionString`,
+`sparkle:minimumSystemVersion` (`LSMinimumSystemVersion` of the app, 11.0),
+the release page as `link`, the release notes as GitHub renders them
+(`description`, which Sparkle shows) and the enclosure: the URL of the
+release asset, its length and `sparkle:edSignature`.
+
+The feeds live in the `packages` branch next to the Linux repositories
+(`macos/`), written by `publish-repo.sh` with `appcast.py`, which keeps one
+fragment per release in `.state/macos/<tag>.json` and writes both feeds
+from them on every run, like the repository indexes. nginx serves them
+below `/euro-office/` like every other file of the branch; the DMG itself is
+downloaded from GitHub Releases.
+
+### What CI does
+
+1. `sign-macos` first computes the tag's `CFBundleVersion` (`appcast.py
+   bundle-version`, which refuses a tag that is not a CE tag) and checks
+   `SPARKLE_ED_PRIVATE_KEY` against `sparkle-ed25519.pub` (`appcast.py
+   check-key`), then signs the app with the update settings, notarizes and
+   staples.
+2. On the final DMG, under its release asset name, `sparkle-sign.sh`
+   writes the key to a mode 600 file under `$RUNNER_TEMP/sparkle-sign.*`,
+   runs Sparkle's own `sign_update -f` (from the desktop-apps commit the tag
+   pins; the key never goes on a command line, and without `-f` the tool
+   would read the login keychain), deletes the file, verifies the signature
+   with an independent Ed25519 implementation (`appcast.py`, RFC 8032)
+   against the committed public key, checks the app's `Info.plist`
+   (`SUPublicEDKey` is the committed key, `CFBundleVersion` the tag's, an
+   https `SUFeedURL`, `SUEnableAutomaticChecks` true) and writes
+   `sparkle-update-macos-arm64.json`, uploaded as
+   `macos-update-euro-office-arm64` (not a release asset).
+3. `publish-repo`, after `publish-release`, downloads the DMG from the
+   release and its notes, and `appcast.py publish` checks that the release
+   asset has the length, SHA-256 and signature of the description and that
+   the app reads the feed of the tag's channel, then adds the item and
+   rewrites both feeds. A re-run keeps the item's date while the DMG is the
+   same. A second tag with the same `CFBundleVersion` is refused.
+4. The job checks that the feeds parse and list the tag's signature, then
+   pushes with the Linux repositories.
+
+### One-time setup (key)
+
+One EdDSA (Ed25519) key pair signs every update. Every installed app
+checks updates against the public key it was built with, so the private key
+must not leak, and losing it costs a key change (below). `sign_update` of
+the bundled Sparkle 2.0.0 reads only one key format: 96 bytes, 128 base64
+characters, what its `generate_keys -x` exports; later versions of
+`generate_keys` export a 32-byte seed, which it refuses.
+
+`appcast.py generate` makes the key pair in that format, from
+`os.urandom`, without a keychain. Do not use `generate_keys`: it keeps one
+Sparkle key per macOS user in the login keychain (service
+`https://sparkle-project.org`, no option to choose another), and when one
+is already there, from any other app, it prints that key ("A pre-existing
+signing key was found") instead of making a new one.
+
+1. **Create it** on your Mac. The private key goes to a file outside any
+   repository (`generate` refuses a path inside a git work tree and an
+   existing file, and creates it with mode 600); the public key goes into
+   the checkout:
+   ```bash
+   python3 -I build/macos/appcast.py generate --private-out ~/sparkle-private.key \
+     --public-out build/macos/sparkle-ed25519.pub
+   python3 -I build/macos/appcast.py check-key --public-key build/macos/sparkle-ed25519.pub \
+     --private-key-file ~/sparkle-private.key
+   ```
+2. **Back it up**: the contents of `~/sparkle-private.key` go into the
+   company password manager, next to the Developer ID `.p12`.
+3. **Secret**, in the environment `signing`:
+   ```bash
+   gh secret set SPARKLE_ED_PRIVATE_KEY --env signing -R UnityStack/DesktopEditors < ~/sparkle-private.key
+   ```
+   Then delete `~/sparkle-private.key`. To sign by hand later, take the key
+   from the password manager into a mode 600 file and pass it to
+   `sign_update -f`; no keychain is needed.
+4. **Commit** `build/macos/sparkle-ed25519.pub` (one line, the public
+   key). Until it is in the tag, `sign-macos` fails.
+5. **Test with a prerelease tag**: the job log shows the check of the key,
+   the `Info.plist` values and the verified signature; the testing feed
+   lists the tag after `publish-repo`. A Mac with that build installed is
+   offered the next prerelease within a day of its publication
+   (`SUScheduledCheckInterval`).
+
+### Changing the key
+
+The bundled Sparkle 2.0.0 checks a DMG update after unpacking it
+(`mustValidateBeforeExtraction` is `NO` in
+`Autoupdate/SUDiskImageUnarchiver.m`), in `validateUpdateForHost` of
+`Sparkle/SUUpdateValidator.m`. It installs the new app if either holds:
+
+- the DMG's EdDSA signature verifies with the *installed* app's
+  `SUPublicEDKey`; or
+- the new app meets the installed app's designated requirement
+  (`Autoupdate/SUCodeSigningVerifier.m`) *and* the DMG's signature
+  verifies with the *new* app's `SUPublicEDKey`.
+
+The designated requirement of a Developer ID app names the bundle
+identifier and the team ID, not the certificate. So:
+
+- **Renewing the Developer ID certificate** (it expires; a new `.p12` in
+  `APPLE_DEVELOPER_ID_P12`) within the same team passes both checks and
+  needs nothing else.
+- **A new EdDSA key**, also **after losing the old one**, passes the second
+  check: keep the Developer ID team, delete `sparkle-ed25519.pub`
+  (`generate` does not overwrite it), make a key pair as in the one-time
+  setup, and in one release commit the new `sparkle-ed25519.pub` and set
+  the new `SPARKLE_ED_PRIVATE_KEY`. The scripts need no change; they
+  already require that the secret, `sparkle-ed25519.pub` and the app's
+  `SUPublicEDKey` are one key.
+- **Never change the EdDSA key and the Developer ID team in the same
+  release**: neither check passes, and installed apps refuse the update, so
+  users have to install it by hand. A change of team needs one release with
+  an unchanged key first.
+- **If the private key leaked**, an attacker who can also put a DMG into a
+  feed the apps read (the `packages` branch, or `packages.unitystack.eu`
+  itself) passes the first check without our Developer ID signature. Change
+  to a new key as above at once; apps that have not installed that release
+  yet still accept the old key.
+
+### Testing locally with a throwaway key
+
+Nothing here touches a keychain: `appcast.py test-key` makes a key pair
+like `generate` (it may overwrite the public key file), and `sign_update`
+reads the key from the file. Do not run `generate_keys`. With the ad hoc
+setup from [Running it locally](#running-it-locally-without-a-certificate):
+
+```bash
+T=/tmp/eo/sparkle; mkdir -p "$T"
+python3 -I build/macos/appcast.py test-key --private-out "$T/test.key" --public-out "$T/test.pub"
+build/macos/sign.sh --input /tmp/eo/in/*.dmg --output /tmp/eo/out/Euro-Office-test.dmg \
+  --identity - --no-notarize --entitlements-dir /tmp/eo/ent-adhoc \
+  --update-feed https://packages.unitystack.eu/euro-office/macos/appcast-testing.xml \
+  --update-key "$T/test.pub" \
+  --bundle-version "$(python3 -I build/macos/appcast.py bundle-version v9.3.6-ce.rc.2)"
+build/macos/sparkle-sign.sh --dmg /tmp/eo/out/Euro-Office-test.dmg --tag v9.3.6-ce.rc.2 \
+  --sign-update desktop-apps/macos/Vendor/Sparkle/bin/sign_update \
+  --public-key "$T/test.pub" --private-key-file "$T/test.key" --out "$T/update.json"
+python3 -I build/macos/appcast.py publish --update "$T/update.json" \
+  --dmg /tmp/eo/out/Euro-Office-test.dmg --tag v9.3.6-ce.rc.2 --channel prerelease \
+  --public-key "$T/test.pub" --state "$T/site/.state/macos" --out "$T/site/macos" \
+  --base-url https://packages.unitystack.eu/euro-office
+cat "$T/site/macos/appcast-testing.xml"
+security find-generic-password -s https://sparkle-project.org   # "could not be found"
+rm -rf "$T"
+```
+
+`appcast.py verify --public-key <file> --signature <sig> <dmg>` checks a
+single signature. `sign.sh` without `--update-feed` (an ad hoc test as
+above, without the three options) leaves the update settings as upstream
+has them.

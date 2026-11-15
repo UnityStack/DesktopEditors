@@ -3,3 +3,4 @@
 build_output.log
 build/deploy/
 build/linux/deploy/
+.DS_Store

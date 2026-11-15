@@ -44,6 +44,15 @@ Optional:
                          in the bundle changes.
   --smoke-seconds <n>    Default: 20.
 
+Automatic updates (all three or none; required when APPLE_DEVELOPER_ID_P12 is
+imported, i.e. in CI), written into the app's Info.plist before signing by
+sparkle-configure.sh:
+  --update-feed <url>    SUFeedURL, the appcast the app reads.
+  --update-key <file>    SUPublicEDKey, Sparkle's public EdDSA key
+                         (build/macos/sparkle-ed25519.pub).
+  --bundle-version <n>   CFBundleVersion the appcast compares
+                         (appcast.py bundle-version <tag>).
+
 Environment (CI, from the GitHub environment "signing"):
   APPLE_DEVELOPER_ID_P12           base64 of the .p12 with the Developer ID
                                    Application certificate and its private key
@@ -65,6 +74,9 @@ WORK_DIR=""
 NOTARIZE=true
 SMOKE_TEST=false
 SMOKE_SECONDS=20
+UPDATE_FEED=""
+UPDATE_KEY=""
+BUNDLE_VERSION=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -76,6 +88,9 @@ while [ $# -gt 0 ]; do
         --no-notarize) NOTARIZE=false; shift ;;
         --smoke-test) SMOKE_TEST=true; shift ;;
         --smoke-seconds) SMOKE_SECONDS="$2"; shift 2 ;;
+        --update-feed) UPDATE_FEED="$2"; shift 2 ;;
+        --update-key) UPDATE_KEY="$2"; shift 2 ;;
+        --bundle-version) BUNDLE_VERSION="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "error: unknown argument: $1" 1>&2; usage 1>&2; exit 1 ;;
     esac
@@ -110,6 +125,21 @@ fi
 for tool in codesign security hdiutil ditto plutil file xcrun shasum; do
     command -v "${tool}" >/dev/null 2>&1 || fail "${tool} not found on PATH."
 done
+
+# Automatic updates: all three settings or none. A release (the CI path,
+# which imports APPLE_DEVELOPER_ID_P12) must not ship without them, nor
+# with only some of them.
+UPDATES=false
+if [ -n "${UPDATE_FEED}${UPDATE_KEY}${BUNDLE_VERSION}" ]; then
+    if [ -z "${UPDATE_FEED}" ] || [ -z "${UPDATE_KEY}" ] || [ -z "${BUNDLE_VERSION}" ]; then
+        fail "--update-feed, --update-key and --bundle-version go together."
+    fi
+    [ -f "${UPDATE_KEY}" ] ||
+        fail "${UPDATE_KEY} not found: the Sparkle public key is created once by the owner (\"Automatic updates (Sparkle)\" in build/macos/README.md)."
+    UPDATES=true
+elif [ -z "${IDENTITY}" ]; then
+    fail "A release needs --update-feed, --update-key and --bundle-version (automatic updates, see \"Automatic updates (Sparkle)\" in build/macos/README.md)."
+fi
 
 AD_HOC=false
 if [ "${IDENTITY}" = "-" ]; then
@@ -414,6 +444,17 @@ echo "App: ${APP_NAME} ($(plutil -extract CFBundleIdentifier raw -o - "${APP}/Co
 # Finder information, or similar detritus not allowed").
 xattr -cr "${APP}" 2>/dev/null || true
 
+# ---- automatic updates -------------------------------------------------- #
+
+# Before signing, so the signature covers the Info.plist Sparkle reads.
+if [ "${UPDATES}" = true ]; then
+    log "Setting up automatic updates (sparkle-configure.sh)"
+    bash "${SCRIPT_DIR}/sparkle-configure.sh" --app "${APP}" --feed-url "${UPDATE_FEED}" \
+        --public-key "${UPDATE_KEY}" --bundle-version "${BUNDLE_VERSION}"
+else
+    echo "No --update-feed: the app keeps upstream's update settings (no feed, automatic checks off)."
+fi
+
 # ---- script caches ------------------------------------------------------ #
 
 # x2t (doctrenderer) compiles editors/sdkjs/<editor>/sdk-all.js on first use
@@ -461,7 +502,7 @@ entitlements_for() {
         "Contents/Frameworks/editors_helper (Renderer).app/Contents/MacOS/editors_helper (Renderer)") echo helper-renderer.entitlements ;;
         "Contents/Resources/converter/x2t") echo x2t.entitlements ;;
         # Sparkle, signed as its documentation describes (hardened runtime,
-        # no entitlements). Not used yet: SUEnableAutomaticChecks is off.
+        # no entitlements). It installs the updates (--update-feed).
         Contents/Frameworks/Sparkle.framework/Versions/*/Autoupdate|\
         Contents/Frameworks/Sparkle.framework/Versions/*/Updater.app/Contents/MacOS/*|\
         Contents/Frameworks/Sparkle.framework/Versions/*/XPCServices/*.xpc/Contents/MacOS/*) echo - ;;
