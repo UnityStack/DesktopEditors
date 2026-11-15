@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 # Runs inside an openSUSE container:
-#   client-zypper.sh <base url> <channel> <key fingerprint> <full|download> [extra key file] [test rpm] [its signing subkey]
+#   client-zypper.sh <base url> <key url> <channel> <key fingerprint> <full|download> [extra key file] [test rpm] [its signing subkey]
 # zypper checks repomd.xml.asc against the keys in the rpm database and
 # refuses unsigned or badly signed metadata (no --gpg-auto-import-keys,
 # no --no-gpg-checks). The key is imported the way the README tells users
 # to: rpm --import of its published URL, after checking its fingerprint.
 set -euo pipefail
-base=$1 channel=$2 fpr=$3 mode=$4 extra=${5:-} test_rpm=${6:-} sub_fpr=${7:-}
+base=$1 key_url=$2 channel=$3 fpr=$4 mode=$5 extra=${6:-} test_rpm=${7:-} sub_fpr=${8:-}
 . /etc/os-release; echo "== $PRETTY_NAME, $(rpm --version), $(zypper --version)"
 zypper -n -q install -y gpg2 curl >/dev/null
 
-curl -fsS -o /tmp/euro-office.asc "$base/keys/euro-office.asc"
-got=$(gpg --batch --with-colons --show-keys /tmp/euro-office.asc | awk -F: '$1=="fpr"{print $10; exit}')
+curl -fsS -o /tmp/unitystack.asc "$key_url"
+got=$(gpg --batch --with-colons --show-keys /tmp/unitystack.asc | awk -F: '$1=="fpr"{print $10; exit}')
 [ "$got" = "$fpr" ] || { echo "FAIL: key fingerprint $got, expected $fpr"; exit 1; }
 echo "ok   key fingerprint $got"
-rpm --import "$base/keys/euro-office.asc"
+rpm --import "$key_url"
 rpm -q gpg-pubkey --qf '%{VERSION}-%{RELEASE} %{SUMMARY}\n' | grep -i "${fpr: -8}" \
-  || { echo "FAIL: rpm --import $base/keys/euro-office.asc added no key ${fpr: -8}"; exit 1; }
+  || { echo "FAIL: rpm --import $key_url added no key ${fpr: -8}"; exit 1; }
 [ -n "$extra" ] && rpm --import "$extra"
 
 # A package signature of the throwaway key's subkey 1 (CI's), made before
@@ -35,8 +35,10 @@ if [ -n "$test_rpm" ]; then
 fi
 
 repo=euro-office.repo; [ "$channel" = testing ] && repo=euro-office-testing.repo
+curl -fsS -o /tmp/repo "$base/rpm/$repo"
+grep -qx "gpgkey=$key_url" /tmp/repo || { echo "FAIL: the .repo's gpgkey= is not $key_url"; exit 1; }
 zypper -n addrepo "$base/rpm/$repo"
-id=$(curl -fsS "$base/rpm/$repo" | sed -n 's/^\[\(.*\)\]$/\1/p')
+id=$(sed -n 's/^\[\(.*\)\]$/\1/p' /tmp/repo)
 zypper -n refresh -r "$id" 2>&1 | tee /tmp/refresh.log
 grep -q "Repository '.*' is up to date\|All repositories have been refreshed\|Retrieving repository" /tmp/refresh.log
 if grep -iE 'unsigned|signature verification failed|not trusted|error' /tmp/refresh.log; then echo "FAIL: refresh"; exit 1; fi

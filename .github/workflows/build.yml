@@ -1607,13 +1607,15 @@ jobs:
   # PUBLISH - signed apt/dnf/zypper repository - tags only
   #
   # Adds this tag's .deb/.rpm to the package repository behind
-  # https://packages.euro-office.org/ (GitHub Pages of this repository,
-  # published from the orphan branch `packages`; created on the first
-  # run). build/linux/repo/publish-repo.sh rewrites the indexes in
-  # ./site and signs InRelease/Release.gpg and repomd.xml.asc with the
-  # signing subkey; this job checks the signatures like a client would,
-  # commits and pushes. Stable tags (see release-info) go to the stable
-  # and testing suites, prereleases to testing only.
+  # https://packages.unitystack.eu/euro-office/ (GitHub Pages of this
+  # repository, published from the orphan branch `packages`; created on the
+  # first run; nginx serves its keys/unitystack.asc as
+  # https://packages.unitystack.eu/keys/unitystack.asc).
+  # build/linux/repo/publish-repo.sh rewrites the indexes in ./site and
+  # signs InRelease/Release.gpg and repomd.xml.asc with the signing
+  # subkey; this job checks the signatures like a client would, commits
+  # and pushes. Stable tags (see release-info) go to the stable and
+  # testing suites, prereleases to testing only.
   #
   # The packages themselves are not committed: nginx redirects the pool
   # paths to the release assets, so the indexes must describe exactly

@@ -10,8 +10,9 @@ place. To change or rebase it, edit a copy of the files and regenerate with
 
   deb/template/control.m4  Homepage field (PUBLISHER_URL)
   deb/template/postrm.m4   purge removes what postinst wrote: the .sources
-                           and defaults files if still ours, the keyring if
-                           no other apt source uses it
+                           and defaults files if still ours, the keyring
+                           (UnityStack's, shared with its other products'
+                           repositories) if no other apt source uses it
   rpm/common.spec          %post registers the repository like the deb
                            postinst (zypp or yum directory by distribution),
                            %postun on erase removes it again; ships
@@ -38,18 +39,19 @@ place. To change or rebase it, edit a copy of the files and regenerate with
  #Standards-Version: 3.9.4
 --- a/deb/template/postrm.m4
 +++ b/deb/template/postrm.m4
-@@ -6,6 +6,18 @@
+@@ -6,6 +6,19 @@
    purge)
      rm -fr /home/*/.local/share/M4_DESKTOPEDITORS_PREFIX
      rm -fr /home/*/.config/M4_COMPANY_NAME_LOW/DesktopEditors.conf
 +    # Repository registration from postinst. The .sources and defaults files
 +    # only when they are still ours (an admin's own file, such as an opt-out,
-+    # stays); the key only when no other apt source still uses it.
++    # stays); the key only when no other apt source still uses it (it is
++    # UnityStack's, shared with the repositories of its other products).
 +    if grep -qsF "Written by the M4_PACKAGE_NAME package." /etc/apt/sources.list.d/M4_REPO_NAME.sources; then
 +      rm -f /etc/apt/sources.list.d/M4_REPO_NAME.sources
 +    fi
-+    if ! grep -rqsF /usr/share/keyrings/M4_REPO_NAME.asc /etc/apt/sources.list /etc/apt/sources.list.d/; then
-+      rm -f /usr/share/keyrings/M4_REPO_NAME.asc
++    if ! grep -rqsF /usr/share/keyrings/M4_REPO_KEY_NAME.asc /etc/apt/sources.list /etc/apt/sources.list.d/; then
++      rm -f /usr/share/keyrings/M4_REPO_KEY_NAME.asc
 +    fi
 +    if grep -qsF "Written by the M4_PACKAGE_NAME package." /etc/default/M4_REPO_NAME; then
 +      rm -f /etc/default/M4_REPO_NAME
@@ -94,14 +96,14 @@ place. To change or rebase it, edit a copy of the files and regenerate with
  %attr(-, root, root) %{_datadir}/icons/*
  %attr(-, root, root) %{_datadir}/licenses/*
 +%attr(-, root, root) %{_datadir}/metainfo/*
-+%attr(644, root, root) %{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-%{_repo_name}
++%attr(644, root, root) %{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-%{_repo_key_name}
  %attr(755, root, root) %{_bindir}/%{_desktopeditors_exec}
 -%if "%{_company_name}" == "euro-office"
 +%if "%{_company_name_low}" == "euro-office"
  %attr(-, root, root) %{_bindir}/desktopeditors
  %exclude /opt/%{_desktopeditors_prefix}/editors/web-apps/apps/*/main/resources/help
  %else
-@@ -81,15 +89,90 @@
+@@ -81,15 +89,93 @@
  %attr(777, root, root) %{_sysconfdir}/%{_package_name}
  %endif
  
@@ -119,6 +121,8 @@ place. To change or rebase it, edit a copy of the files and regenerate with
 +# not recreated by later upgrades. Opt-out before installing: an empty
 +# defaults file or one containing repo_add="false". The key is payload
 +# (gpgkey below); dnf/zypper import it on first use, never this scriptlet.
++# It is UnityStack's key, the same for the repositories of its other
++# products, so its file and URL are not named after this product.
 +# pkg_gpgcheck: with a signed repomd.xml zypper skips the package signature
 +# unless it is set (dnf ignores it, gpgcheck covers dnf).
 +defaults=/etc/default/%{_repo_name}
@@ -154,7 +158,7 @@ place. To change or rebase it, edit a copy of the files and regenerate with
 +gpgcheck=1
 +repo_gpgcheck=1
 +pkg_gpgcheck=1
-+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-%{_repo_name} %{_repo_url}/keys/%{_repo_name}.asc
++gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-%{_repo_key_name} %{_repo_key_url}
 +metadata_expire=6h
 +type=rpm-md
 +autorefresh=1
@@ -183,7 +187,8 @@ place. To change or rebase it, edit a copy of the files and regenerate with
  rm -f /usr/share/mime/packages/onlyoffice-oform.xml
 +if [ "$1" = 0 ]; then
 +  # Erase (not upgrade): drop what the install scriptlet wrote, if it is
-+  # still ours. An admin's own defaults file (opt-out) stays.
++  # still ours. An admin's own defaults file (opt-out) stays, and so does
++  # the imported key (gpg-pubkey): other UnityStack repositories use it.
 +  for f in /etc/yum.repos.d/%{_repo_name}.repo /etc/zypp/repos.d/%{_repo_name}.repo /etc/default/%{_repo_name}; do
 +    if grep -qsF "Written by the %{_package_name} package." "$f"; then
 +      rm -f "$f"

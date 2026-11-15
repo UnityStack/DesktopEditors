@@ -1,10 +1,10 @@
 # Euro-Office Community Edition (unofficial build by UnityStack GmbH), @SUITE@ channel.
 # Install as /etc/apt/sources.list.d/euro-office.sources together with the key
-# @BASE_URL@/keys/euro-office.asc in /usr/share/keyrings/euro-office.asc.
+# @KEY_URL@ in /usr/share/keyrings/unitystack.asc.
 # Key fingerprint: @KEY_FPR@
 Types: deb
 URIs: @BASE_URL@/apt
 Suites: @SUITE@
 Components: main
 Architectures: amd64 arm64
-Signed-By: /usr/share/keyrings/euro-office.asc
+Signed-By: /usr/share/keyrings/unitystack.asc

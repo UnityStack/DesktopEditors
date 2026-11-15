@@ -1,0 +1,32 @@
+# Euro-Office Community Edition, apt and rpm repositories.
+# Unofficial community build by UnityStack GmbH, not affiliated with the Euro-Office project.
+#
+# Signing key: @KEY_URL@
+# Check that its fingerprint is @KEY_FPR_SPACED@:
+#   curl -fsSL @KEY_URL@ | gpg --show-keys
+#
+# Release candidates are in the testing channel: use euro-office-testing.sources
+# or euro-office-testing.repo instead.
+
+# Debian, Ubuntu (apt):
+sudo curl -fsSL -o /usr/share/keyrings/unitystack.asc @KEY_URL@
+sudo tee /etc/apt/sources.list.d/euro-office.sources > /dev/null <<'END'
+Types: deb
+URIs: @BASE_URL@/apt
+Suites: stable
+Components: main
+Architectures: amd64 arm64
+Signed-By: /usr/share/keyrings/unitystack.asc
+END
+sudo apt update
+sudo apt install euro-office-euro-office
+
+# Fedora, RHEL, Rocky Linux (dnf):
+sudo rpm --import @KEY_URL@
+sudo curl -fsSL -o /etc/yum.repos.d/euro-office.repo @BASE_URL@/rpm/euro-office.repo
+sudo dnf install euro-office-euro-office
+
+# openSUSE (zypper):
+sudo rpm --import @KEY_URL@
+sudo zypper addrepo @BASE_URL@/rpm/euro-office.repo
+sudo zypper install euro-office-euro-office

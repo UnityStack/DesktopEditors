@@ -7,11 +7,11 @@ name: Signing key check
 # --require-published --check-signatures --released, plus --live once the
 # `packages` branch exists. It fails when
 #
-# - https://packages.euro-office.org/keys/euro-office.asc serves another key
+# - https://packages.unitystack.eu/keys/unitystack.asc serves another key
 #   than the committed one (key material or signature packets; expected
 #   after a key change until the next release), or, once the repository
-#   is live, serves no key or none of its InRelease and repomd.xml.asc
-#   files,
+#   is live, serves no key, or https://packages.unitystack.eu/euro-office/
+#   serves none of the repository's InRelease and repomd.xml.asc files,
 # - the committed key lacks a signature packet the published key has, or no
 #   longer verifies a signature of the newest 10 releases the way rpm 6
 #   does (rpm 6 on Fedora would then reject those releases' RPMs),

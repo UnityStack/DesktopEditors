@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
 # Adds one release to the signed apt and rpm repositories served at
-# https://packages.euro-office.org/ and rebuilds every index of the site.
+# https://packages.unitystack.eu/euro-office/ and rebuilds every index of the
+# site.
 #
 #   publish-repo.sh --tag v9.3.6-ce --channel stable|prerelease \
 #                   --packages <dir> --site <dir> \
 #                   [--asset-map <file>] [--repo owner/name] \
-#                   [--base-url https://packages.euro-office.org] [--date YYYY-MM-DD]
+#                   [--base-url https://packages.unitystack.eu/euro-office] \
+#                   [--key-url https://packages.unitystack.eu/keys/unitystack.asc] \
+#                   [--date YYYY-MM-DD]
+#
+# --base-url is where the site is served, --key-url where the signing key is:
+# UnityStack's key, the same for its other products' repositories, so it is
+# served next to them rather than below this one (nginx serves it from this
+# site's keys/unitystack.asc). The .sources, .repo and README.txt files carry
+# both. Every directory gets a listing (index.html) in the form of nginx's
+# autoindex, written by autoindex.py.
 #
 # The site (the `packages` branch, served by GitHub Pages behind nginx) holds
 # only metadata. Package files stay on GitHub Releases: the indexes point at
@@ -66,7 +76,8 @@ METAINFO_M4=${METAINFO_M4:-$here/../package/common/linux/metainfo.xml.m4}
 STATE_FORMAT=1
 
 tag='' channel='' packages='' site='' asset_map='' repo=UnityStack/DesktopEditors
-base_url=https://packages.euro-office.org date=$(date -u +%F)
+base_url=https://packages.unitystack.eu/euro-office
+key_url=https://packages.unitystack.eu/keys/unitystack.asc date=$(date -u +%F)
 
 die() { echo "publish-repo: error: $*" >&2; exit 1; }
 log() { echo "publish-repo: $*" >&2; }
@@ -84,8 +95,9 @@ while [ $# -gt 0 ]; do
     --asset-map) asset_map=$2; shift 2 ;;
     --repo) repo=$2; shift 2 ;;
     --base-url) base_url=${2%/}; shift 2 ;;
+    --key-url) key_url=$2; shift 2 ;;
     --date) date=$2; shift 2 ;;
-    -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -122,7 +134,7 @@ if [ -n "${GPG_PASSPHRASE_FILE:-}" ]; then
 fi
 
 # ── Keys ─────────────────────────────────────────────────────────
-# keys/euro-office.gpg is the binary form for gpgv and for users who want
+# keys/unitystack.gpg is the binary form for gpgv and for users who want
 # a .gpg keyring. Everything this run signs is checked against it, so a
 # signing key that is not the published one fails here and not on clients.
 # The site serves this file as it is, so it must be one public key: gpg
@@ -138,13 +150,13 @@ fi
 [ "$(grep -c '^:public key packet:' <<<"$key_packets" || true)" = 1 ] \
   || die "$KEY_FILE is not exactly one OpenPGP public key"
 mkdir -p "$new/keys"
-cp "$KEY_FILE" "$new/keys/euro-office.asc"
-gpg --batch --dearmor < "$KEY_FILE" > "$new/keys/euro-office.gpg"
+cp "$KEY_FILE" "$new/keys/unitystack.asc"
+gpg --batch --dearmor < "$KEY_FILE" > "$new/keys/unitystack.gpg"
 key_fpr=$(gpg --batch --with-colons --show-keys "$KEY_FILE" | awk -F: '$1=="fpr"{print $10; exit}')
 key_fpr_spaced=$(sed -E 's/(.{4})/\1 /g; s/^(.{24})/\1 /; s/ +$//' <<<"$key_fpr")
 gpg --batch --with-colons --show-keys "$KEY_FILE" | awk -F: '$1=="fpr"{print $10}' \
   | grep -qix "$SIGN_FPR" || die "SIGN_FPR $SIGN_FPR is not a key in $KEY_FILE"
-verify() { gpgv --quiet --keyring "$new/keys/euro-office.gpg" "$@" 2>/dev/null \
+verify() { gpgv --quiet --keyring "$new/keys/unitystack.gpg" "$@" 2>/dev/null \
              || die "signature check failed: $*"; }
 
 # ── Release assets ───────────────────────────────────────────────
@@ -442,10 +454,11 @@ for suite in stable testing; do
   mkdir -p "$d"
   mapfile -t tags < <(suite_tags "$suite" apt)
 
-  # by-hash files from earlier runs. apt-ftparchive adds the current ones;
-  # anything not named by the last three Release files is dropped below.
+  # by-hash files from earlier runs, without their listings. apt-ftparchive
+  # adds the current ones; anything not named by the last three Release
+  # files is dropped below.
   if [ -d "$site/apt/dists/$suite" ]; then
-    (cd "$site/apt/dists/$suite" && find . -path '*/by-hash/*' -type f -print0) \
+    (cd "$site/apt/dists/$suite" && find . -path '*/by-hash/*' -type f ! -name index.html -print0) \
       | (cd "$site/apt/dists/$suite" && xargs -0 -r cp -a --parents -t "$d")
   fi
 
@@ -555,7 +568,7 @@ for ch in stable testing; do
   r=$out/repodata
   "${gpg_sign[@]}" --armor --detach-sign -o "$r/repomd.xml.asc" "$r/repomd.xml"
   verify "$r/repomd.xml.asc" "$r/repomd.xml"
-  cp "$new/keys/euro-office.asc" "$r/repomd.xml.key"
+  cp "$new/keys/unitystack.asc" "$r/repomd.xml.key"
 
   # Keep the data files of the last three repomd.xml generations (see
   # keep_files_of), counted like the apt Release history: repomd.xml.0 is
@@ -575,10 +588,10 @@ for ch in stable testing; do
   done
 done
 
-# ── Repository files and the human page ──────────────────────────
+# ── Repository files, README.txt and the listings ────────────────
 render() {   # <template> <output> [KEY=VALUE...]
   local tpl=$1 out=$2; shift 2
-  local args=(-e "s|@BASE_URL@|$base_url|g" -e "s|@KEY_FPR@|$key_fpr|g"
+  local args=(-e "s|@BASE_URL@|$base_url|g" -e "s|@KEY_URL@|$key_url|g" -e "s|@KEY_FPR@|$key_fpr|g"
               -e "s|@KEY_FPR_SPACED@|$key_fpr_spaced|g")
   for kv in "$@"; do args+=(-e "s|@${kv%%=*}@|${kv#*=}|g"); done
   mkdir -p "$(dirname "$out")"
@@ -590,23 +603,12 @@ render "$here/templates/euro-office.repo.in" "$new/rpm/euro-office.repo" CHANNEL
   REPO_ID=euro-office "REPO_NAME=Euro-Office Community Edition (UnityStack GmbH)"
 render "$here/templates/euro-office.repo.in" "$new/rpm/euro-office-testing.repo" CHANNEL=testing \
   REPO_ID=euro-office-testing "REPO_NAME=Euro-Office Community Edition testing (UnityStack GmbH)"
-
-channels_html=
-for ch in stable testing; do
-  newest=$(suite_tags "$ch" apt | head -n1)
-  [ -n "$newest" ] || newest=$(suite_tags "$ch" rpm | head -n1)
-  if [ -n "$newest" ]; then
-    v=$(jq -r --arg t "$newest" '.releases[] | select(.tag == $t) | .version' "$new/.state/releases.json")
-    cell="<a href=\"https://github.com/$repo/releases/tag/$newest\">$newest</a> (<code>$v</code>)"
-  else
-    cell="none yet"
-  fi
-  channels_html+="  <tr><td><code>$ch</code></td><td>$cell</td></tr>\\n"
-done
-render "$here/templates/index.html.in" "$new/index.html" \
-  "CHANNELS_HTML=${channels_html%\\n}" "UPDATED=$(date -u '+%Y-%m-%d %H:%M UTC')"
+render "$here/templates/README.txt.in" "$new/README.txt"
 touch "$new/.nojekyll"
 echo "$STATE_FORMAT" > "$new/.state/format"
+# Last, so the listings name every file above. Entries keep their date while
+# their content stays the same (.state/listing.tsv).
+python3 -I "$here/autoindex.py" --site "$new" --base-url "$base_url" --now "$(date -u +%s)"
 
 # ── Swap in ──────────────────────────────────────────────────────
 find "$site" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +

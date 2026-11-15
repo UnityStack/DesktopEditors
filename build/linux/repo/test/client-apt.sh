@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Runs inside a Debian/Ubuntu container: sets the repository up the way the
 # README tells users to, then installs from it.
-#   client-apt.sh <base url> <suite> <key fingerprint> <full|download> [appstream]
+#   client-apt.sh <base url> <key url> <suite> <key fingerprint> <full|download> [appstream]
 # Fails on any apt warning about the repository; never uses trusted=yes or
 # --allow-unauthenticated, so the package can only come from a verified index.
 set -euo pipefail
-base=$1 suite=$2 fpr=$3 mode=$4 appstream=${5:-}
+base=$1 key_url=$2 suite=$3 fpr=$4 mode=$5 appstream=${6:-}
 export DEBIAN_FRONTEND=noninteractive
 pkgs=(ca-certificates curl gpg)
 [ -n "$appstream" ] && pkgs+=(appstream)
@@ -13,8 +13,8 @@ apt-get update -qq >/dev/null
 apt-get install -y -qq --no-install-recommends "${pkgs[@]}" >/dev/null
 . /etc/os-release; echo "== $PRETTY_NAME, $(apt-get --version | head -n1)"
 
-curl -fsS -o /usr/share/keyrings/euro-office.asc "$base/keys/euro-office.asc"
-got=$(gpg --batch --with-colons --show-keys /usr/share/keyrings/euro-office.asc | awk -F: '$1=="fpr"{print $10; exit}')
+curl -fsS -o /usr/share/keyrings/unitystack.asc "$key_url"
+got=$(gpg --batch --with-colons --show-keys /usr/share/keyrings/unitystack.asc | awk -F: '$1=="fpr"{print $10; exit}')
 [ "$got" = "$fpr" ] || { echo "FAIL: key fingerprint $got, expected $fpr"; exit 1; }
 echo "ok   key fingerprint $got"
 
@@ -27,7 +27,9 @@ fi
 
 src=euro-office.sources; [ "$suite" = testing ] && src=euro-office-testing.sources
 curl -fsS -o /etc/apt/sources.list.d/euro-office.sources "$base/apt/$src"
-grep -q '^Signed-By: /usr/share/keyrings/euro-office.asc$' /etc/apt/sources.list.d/euro-office.sources
+grep -q '^Signed-By: /usr/share/keyrings/unitystack.asc$' /etc/apt/sources.list.d/euro-office.sources
+grep -qx "URIs: $base/apt" /etc/apt/sources.list.d/euro-office.sources \
+  || { echo "FAIL: the .sources file does not point at $base/apt"; exit 1; }
 apt-get update 2>&1 | tee /tmp/update.log | grep -i 'euro-office' || true
 if grep -E '^(W|E|Err):' /tmp/update.log; then echo "FAIL: apt update reported problems"; exit 1; fi
 grep -q "InRelease" /tmp/update.log

@@ -390,7 +390,7 @@ third the new export. Until the site serves a key, `curl` fails (404);
 leave `published.asc` out of the merge then.
 
 ```sh
-curl -fsSL -o published.asc https://packages.euro-office.org/keys/euro-office.asc
+curl -fsSL -o published.asc https://packages.unitystack.eu/keys/unitystack.asc
 python3 build/linux/merge-public-key.py --output merged.asc published.asc build/linux/unitystack-package-signing.asc new.asc
 mv merged.asc build/linux/unitystack-package-signing.asc
 gpg --show-keys --with-subkey-fingerprints build/linux/unitystack-package-signing.asc
@@ -447,9 +447,9 @@ If `LINUX_GPG_PRIVATE_KEY` (or the CI passphrase with it) may have leaked:
    release:
 
    ```sh
-   python3 build/linux/merge-public-key.py --drop-revoked-subkeys --output euro-office-without-revoked-subkeys.asc build/linux/unitystack-package-signing.asc
-   gpg --show-keys --with-subkey-fingerprints euro-office-without-revoked-subkeys.asc
-   gh release upload <tag> euro-office-without-revoked-subkeys.asc -R UnityStack/DesktopEditors
+   python3 build/linux/merge-public-key.py --drop-revoked-subkeys --output unitystack-without-revoked-subkeys.asc build/linux/unitystack-package-signing.asc
+   gpg --show-keys --with-subkey-fingerprints unitystack-without-revoked-subkeys.asc
+   gh release upload <tag> unitystack-without-revoked-subkeys.asc -R UnityStack/DesktopEditors
    ```
 
 6. Tell users: in that release's notes and in a pinned issue, say which
@@ -476,11 +476,16 @@ What reaches whom (measured Nov 2026 with a throwaway key of this layout,
 - Everything the spare signs verifies on every installed system without
   any action: they have had the spare since their first install.
 - apt: the package update, signed by the spare, rewrites
-  `/usr/share/keyrings/euro-office.asc` with the revocation, and gpgv (as
-  apt reads it) and sqv then reject the leaked subkey's signatures.
+  `/usr/share/keyrings/unitystack.asc` with the revocation, and gpgv (as
+  apt reads it) and sqv then reject the leaked subkey's signatures. The key
+  files are UnityStack's, not this product's (see
+  [Package repositories](#package-repositories)): once another product
+  ships them, its packages need the changed key in the same emergency
+  release, or an install of one of its older packages writes the old key
+  back (apt), and rpm refuses whichever package carries different bytes.
 - rpm: the package installs the updated key file, but rpm and dnf do not
   import a key again that they already have. Fedora's rpm 6 takes the
-  revocation with `sudo rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-euro-office`
+  revocation with `sudo rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-unitystack`
   and then rejects the leaked subkey's packages. Tumbleweed (rpm 4.20)
   rejects them only after a fresh import (`rpm -e` of the old key first).
   rpm 4.14, 4.16 and 4.19 (Leap 15.6, RHEL 9 and 10) import the key but
@@ -513,7 +518,7 @@ step 4):
   package with the updated key file:
 
   ```sh
-  sudo rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-euro-office
+  sudo rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-unitystack
   sudo rm -rf /var/cache/libdnf5/euro-office*/pubring
   ```
 
@@ -523,10 +528,10 @@ step 4):
   `gpg --show-keys` shows the primary key `62E1 6713 ... 3A2B 29ED`:
 
   ```sh
-  curl -fsSLO https://github.com/UnityStack/DesktopEditors/releases/download/<tag>/euro-office-without-revoked-subkeys.asc
-  gpg --show-keys euro-office-without-revoked-subkeys.asc
+  curl -fsSLO https://github.com/UnityStack/DesktopEditors/releases/download/<tag>/unitystack-without-revoked-subkeys.asc
+  gpg --show-keys unitystack-without-revoked-subkeys.asc
   sudo rpm -e gpg-pubkey-3a2b29ed
-  sudo rpm --import euro-office-without-revoked-subkeys.asc
+  sudo rpm --import unitystack-without-revoked-subkeys.asc
   sudo rm -rf /var/cache/dnf/euro-office*/pubring
   ```
 
@@ -542,7 +547,7 @@ A subkey added later reaches installed systems only partly (measured Nov
 10, openSUSE Leap 15.6 and Tumbleweed):
 
 - apt gets a changed key only through a package update, since the `.deb`
-  rewrites `/usr/share/keyrings/euro-office.asc`. If the repository is
+  rewrites `/usr/share/keyrings/unitystack.asc`. If the repository is
   signed by a new subkey before that update arrived, `apt-get update`
   prints `W:` lines, keeps the old lists and exits 0: the system silently
   stops updating. Fresh installs fail.
@@ -554,7 +559,7 @@ A subkey added later reaches installed systems only partly (measured Nov
   ```sh
   rpm -q gpg-pubkey --qf '%{NAME}-%{VERSION}-%{RELEASE}\t%{SUMMARY}\n'
   sudo rpm -e gpg-pubkey-3a2b29ed
-  sudo rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-euro-office
+  sudo rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-unitystack
   ```
 
 - dnf5 (Fedora) and dnf 4.20 (EL10) also keep a keyring per repository
@@ -632,11 +637,12 @@ published one.
   they are downloaded, the download step goes on and records it; the
   preflight then fails (it signs nothing it could not check), the public
   checks warn.
-- *Published key*: `https://packages.euro-office.org/keys/euro-office.asc`,
-  the key installed systems got. Every signature packet in it must be in
-  the committed key (bindings, revocations, self-signatures, compared by
-  their hashed content), and its subkeys must come first in the committed
-  key, in the same order. A published key that lacks packets of the
+- *Published key*: `https://packages.unitystack.eu/keys/unitystack.asc`,
+  the key installed systems got (`--check-signatures` reads the index files
+  from `https://packages.unitystack.eu/euro-office/`). Every signature
+  packet in it must be in the committed key (bindings, revocations,
+  self-signatures, compared by their hashed content), and its subkeys must
+  come first in the committed key, in the same order. A published key that lacks packets of the
   committed one (after a key change, until the release) is reported as
   different, never as the committed one. Until the host answers, or while it answers 404,
   it is not checked (a notice); another HTTP error or a body that is not a
@@ -664,8 +670,8 @@ The day thresholds only apply to a subkey with an expiry: 90 days leave a
 quarter in which it still signs, so a release can re-sign the repository
 before apt and dnf reject the old signatures; 180 days warn two quarters
 ahead; 30 days are how long GitHub lets a run be re-run, so the jobs after
-the build accept 60. `TEST_NOW` and `TEST_KEY_URL` exist for the table test
-only; the script refuses them under GitHub Actions.
+the build accept 60. `TEST_NOW`, `TEST_KEY_URL` and `TEST_REPO_URL` exist for
+the table test only; the script refuses them under GitHub Actions.
 
 #### Fingerprints users see
 
@@ -715,10 +721,10 @@ rpm -K euro-office-*.rpm
 
 ## Package repositories
 
-`https://packages.euro-office.org/` serves signed package repositories for
-apt (Debian, Ubuntu, Linux Mint), dnf (Fedora, RHEL, AlmaLinux, Rocky Linux)
-and zypper (openSUSE). Users install once and get updates through their
-package manager. The apt repository also carries AppStream (DEP-11) data, so
+`https://packages.unitystack.eu/euro-office/` serves signed package
+repositories for apt (Debian, Ubuntu, Linux Mint), dnf (Fedora, RHEL,
+AlmaLinux, Rocky Linux) and zypper (openSUSE). Users install once and get
+updates through their package manager. The apt repository also carries AppStream (DEP-11) data, so
 software centres such as the Ubuntu App Center show the publisher (UnityStack
 GmbH), the licence (AGPL-3.0-only) and the icon instead of "Unknown
 publisher" and "Potentially unsafe".
@@ -727,32 +733,54 @@ The `.deb` and `.rpm` from the releases page add the repository themselves
 when they are installed (see [Opting out](#opting-out)), the way Chrome's
 packages do. The commands below are for users who want to add it first.
 
+`packages.unitystack.eu` is UnityStack's package host, shared with the
+repositories of its other products: each product has its own path below it,
+and all of them are signed with the one key
+`https://packages.unitystack.eu/keys/unitystack.asc`. Clients therefore keep
+the key under UnityStack's name, `/usr/share/keyrings/unitystack.asc` (apt)
+and `/etc/pki/rpm-gpg/RPM-GPG-KEY-unitystack` (rpm), while the repository
+files and ids (`euro-office.sources`, `euro-office.repo`, `[euro-office]`)
+name the product. The host is a plain directory listing like other package
+hosts; `https://packages.unitystack.eu/euro-office/README.txt` has the
+commands below in short.
+
+Until a second UnityStack product ships these files, sharing them is a
+promise only: the `.deb` writes its own copy of the key to the keyring on
+every install and upgrade, and the `.rpm` carries
+`/etc/pki/rpm-gpg/RPM-GPG-KEY-unitystack` as payload. Two products may share
+them only while every package of both carries the same key, byte for byte:
+with different bytes rpm refuses the second package (a file conflict, also
+with `%config(noreplace)`), and an older `.deb` would overwrite a newer key,
+undoing a revocation. Before a second product uses the key, move the key
+files into a package of their own that every product depends on.
+
 ### Checking the key
 
 Everything in the repository is signed with a
 [signing subkey](#signing-key) of `unitystack-package-signing.asc`, published
-as `https://packages.euro-office.org/keys/euro-office.asc`. Before trusting
+as `https://packages.unitystack.eu/keys/unitystack.asc`. Before trusting
 it, check that the primary key fingerprint is
 `62E1 6713 F445 9962 B020  2B01 038A B9E6 3A2B 29ED`:
 
 ```sh
-curl -fsSL https://packages.euro-office.org/keys/euro-office.asc | gpg --show-keys
+curl -fsSL https://packages.unitystack.eu/keys/unitystack.asc | gpg --show-keys
 ```
 
 ### apt (Debian 12+, Ubuntu 22.04+, Linux Mint 21+)
 
 ```sh
-sudo curl -fsSL -o /usr/share/keyrings/euro-office.asc \
-  https://packages.euro-office.org/keys/euro-office.asc
-gpg --show-keys /usr/share/keyrings/euro-office.asc      # check the fingerprint
+sudo curl -fsSL -o /usr/share/keyrings/unitystack.asc \
+  https://packages.unitystack.eu/keys/unitystack.asc
+gpg --show-keys /usr/share/keyrings/unitystack.asc       # check the fingerprint
 sudo curl -fsSL -o /etc/apt/sources.list.d/euro-office.sources \
-  https://packages.euro-office.org/apt/euro-office.sources
+  https://packages.unitystack.eu/euro-office/apt/euro-office.sources
 sudo apt update
 sudo apt install euro-office-euro-office
 ```
 
-`euro-office.sources` uses `Signed-By: /usr/share/keyrings/euro-office.asc`,
-so the key is trusted for this repository only, not for the whole system.
+`euro-office.sources` uses `Signed-By: /usr/share/keyrings/unitystack.asc`,
+so the key is trusted for the sources that name it only, not for the whole
+system.
 The packages write the key to the same path on every install and upgrade. The
 key holds the spare signing subkey as well, so switching CI to it needs
 nothing from users; a change to the key (a revocation, a new spare) reaches
@@ -765,11 +793,11 @@ RHEL 8 and its rebuilds lack `xcb-util-cursor`; enable EPEL there first
 own repositories.
 
 ```sh
-curl -fsSL -o euro-office.asc https://packages.euro-office.org/keys/euro-office.asc
-gpg --show-keys euro-office.asc                          # check the fingerprint
-sudo rpm --import euro-office.asc
+curl -fsSL -o unitystack.asc https://packages.unitystack.eu/keys/unitystack.asc
+gpg --show-keys unitystack.asc                           # check the fingerprint
+sudo rpm --import unitystack.asc
 sudo curl -fsSL -o /etc/yum.repos.d/euro-office.repo \
-  https://packages.euro-office.org/rpm/euro-office.repo
+  https://packages.unitystack.eu/euro-office/rpm/euro-office.repo
 sudo dnf install euro-office-euro-office
 ```
 
@@ -796,10 +824,10 @@ file, whichever subkey signed: today
 ### zypper (openSUSE)
 
 ```sh
-curl -fsSL -o euro-office.asc https://packages.euro-office.org/keys/euro-office.asc
-gpg --show-keys euro-office.asc                          # check the fingerprint
-sudo rpm --import euro-office.asc
-sudo zypper addrepo https://packages.euro-office.org/rpm/euro-office.repo
+curl -fsSL -o unitystack.asc https://packages.unitystack.eu/keys/unitystack.asc
+gpg --show-keys unitystack.asc                           # check the fingerprint
+sudo rpm --import unitystack.asc
+sudo zypper addrepo https://packages.unitystack.eu/euro-office/rpm/euro-office.repo
 sudo zypper install euro-office-euro-office
 ```
 
@@ -847,10 +875,12 @@ package wrote (`/etc/apt/sources.list.d/euro-office.sources`,
 it is not written again: the first install records that state in
 `/etc/default/euro-office`. Purging the `.deb` (`apt purge`) removes the
 repository file and that state file if the package wrote them, and the key
-unless another apt source still uses it (such as one you added by hand);
-erasing the RPM removes the `.repo` file and the state file, if the package
-wrote them. A defaults file or repository file you created yourself is left
-alone, so an opt-out survives a purge and a reinstall.
+unless another apt source still uses it (such as one you added by hand, or
+the repository of another UnityStack product); erasing the RPM removes the
+`.repo` file and the state file, if the package wrote them, and leaves the
+imported key in the rpm database for those other repositories. A defaults
+file or repository file you created yourself is left alone, so an opt-out
+survives a purge and a reinstall.
 
 ### Testers of v9.3.6-ce.rc.1
 
@@ -895,14 +925,17 @@ The `publish-repo` job in `.github/workflows/build.yml` runs on tags after
 downloads the tag's `.deb` and `.rpm` from the GitHub release, imports the
 signing subkey like `sign-linux`, runs `build/linux/repo/publish-repo.sh`,
 checks the signatures and pushes the result to the orphan branch `packages`,
-which GitHub Pages serves. Stable tags go to both channels, prereleases to
-testing only.
+which GitHub Pages serves at `https://unitystack.github.io/DesktopEditors/`.
+Stable tags go to both channels, prereleases to testing only.
 
 The branch holds only metadata, a few hundred kilobytes per release:
 
 ```
-index.html, .nojekyll         human page with these instructions
-keys/euro-office.{asc,gpg}    public key, armored and binary
+README.txt, .nojekyll         plain-text instructions: apt, dnf, zypper, the key and its fingerprint
+index.html in each directory  its listing, "Index of /euro-office/...", in the form of nginx's autoindex
+apt/pool/<tag>/, rpm/<channel>/packages/<tag>/
+                              listings only: the package files the indexes name (see below)
+keys/unitystack.{asc,gpg}     public key, armored and binary
 apt/euro-office{,-testing}.sources
 apt/dists/<suite>/            InRelease, Release, Release.gpg; main/binary-{amd64,arm64}/Packages*,
                               main/dep11/ (AppStream), by-hash/
@@ -912,11 +945,21 @@ rpm/<channel>/repodata/       repomd.xml, repomd.xml.asc, repomd.xml.key, ...
 .state/                       per-release fragments the indexes are rebuilt from
 ```
 
+The nginx of `packages.unitystack.eu` (fluxcd-org-apps) serves the branch
+below `/euro-office/` and its `keys/unitystack.asc` as `/keys/unitystack.asc`;
+`/` and `/keys/` are listings of their own in the same form, and nothing else
+is taken from Pages:
+
+| `https://packages.unitystack.eu`... | Served from |
+|---|---|
+| `/`, `/keys/` | nginx itself (listings of `euro-office/`, `keys/` and `unitystack.asc`) |
+| `/keys/unitystack.asc` | `https://unitystack.github.io/DesktopEditors/keys/unitystack.asc` |
+| `/euro-office/<path>` | `https://unitystack.github.io/DesktopEditors/<path>`, except the package paths below |
+
 The packages themselves stay on GitHub Releases. The indexes name them
 `apt/pool/<tag>/<asset>` and `rpm/<channel>/packages/<tag>/<asset>`, and nginx
-in front of Pages answers those paths with a 302 to
-`https://github.com/UnityStack/DesktopEditors/releases/download/<tag>/<asset>`
-(fluxcd-org-apps, `websites/euro-office/`). `<asset>` is GitHub's name for the
+answers those paths below `/euro-office/` with a 302 to
+`https://github.com/UnityStack/DesktopEditors/releases/download/<tag>/<asset>`. `<asset>` is GitHub's name for the
 uploaded file, which replaces the `~` of the package version with `.`, so
 `publish-repo.sh` matches local files to release assets by SHA-256 (the
 `digest` of the release API), never by file name.
@@ -949,6 +992,14 @@ uploaded file, which replaces the `~` of the package version with `.`, so
 - Builds the new tree in a temporary directory, checks every signature with
   `gpgv` against the published key, and only then replaces the site. A
   failed run leaves `site/` untouched.
+- Writes `README.txt` from `templates/README.txt.in`, then a listing,
+  `index.html`, into every directory (`autoindex.py`): GitHub Pages lists no
+  directories, so each answers as nginx's `autoindex` would, "Index of" the
+  path, the entries with date and size, directories first, no other text.
+  `apt/pool/` and `rpm/<channel>/packages/` get listings of the tags and
+  package files the indexes name, which nginx redirects. An entry keeps its
+  date while its content (for a directory: the names in it) stays the same
+  (`.state/listing.tsv`), so an unchanged tree gives the same listings.
 - Writes `.state/format`. A site written by a newer `publish-repo.sh` (a
   higher format) is refused, so re-running `publish-repo` of an older tag
   after the tooling changed cannot rebuild the site with the older script;
@@ -999,7 +1050,7 @@ The signing environment hands the key and a `contents: write` token to any
   single tag pattern `v*` (the `if:` of `signing-preflight` matches it),
 - GitHub Pages (Settings, Pages): source "Deploy from a branch", branch
   `packages`, folder `/ (root)`, and no custom domain: the nginx of
-  fluxcd-org-apps serves `packages.euro-office.org` from
+  fluxcd-org-apps serves `packages.unitystack.eu/euro-office/` from
   `https://unitystack.github.io/DesktopEditors/` (see
   [How CI publishes](#how-ci-publishes)). It can be set only once the first
   publish created the branch (see `PACKAGES_PAGES_BOOTSTRAP` below),
@@ -1043,10 +1094,21 @@ key is merged with `merge-public-key.py` as in
 [Changing the public key](#changing-the-public-key) and carries both
 bindings, and CI holds and signs with subkey 1), publishes
 it twice and checks that nothing changed, runs `check-site.sh` (signatures,
-by-hash, hrefs) and `channels.sh` (channels, the 10-release window,
-retention, failure paths, with small fake packages), serves the site through the real nginx
-config from fluxcd-org-apps (`NGINX_CONF`; only the Pages upstream is swapped
-for a local container) and runs these clients with signature checks on:
+by-hash, hrefs, `README.txt`, and that every listing names exactly its
+directory's entries, below `apt/pool/` and `rpm/<channel>/packages/` those
+of the indexes) and `channels.sh` (channels, the 10-release window,
+retention, the listings' dates, failure paths, with small fake packages),
+and `maintainer-scripts.sh`: the `.deb` scripts and the `.rpm` scriptlets
+that register the repository, built from `desktop-apps/package` with
+`package.patch` and `fork.mk`'s defaults, installed, removed and purged in
+debian:13 (with a second product sharing the keyring) and fedora:43. It
+serves the site through the real nginx config of `packages.unitystack.eu`
+from fluxcd-org-apps (`NGINX_CONF`; only the Pages upstream is swapped for a
+local container), checks the listings of `/`, `/keys/` (the size of the
+committed key) and of the site's directories, and that a path with a line
+feed reaches Pages below `/DesktopEditors/` too, so the clients read the
+repository below `/euro-office/` and the key from `/keys/unitystack.asc` as
+in production, and runs these clients with signature checks on:
 
 | Client | Checks |
 |---|---|

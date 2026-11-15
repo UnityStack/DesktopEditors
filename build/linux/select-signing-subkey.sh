@@ -78,7 +78,7 @@
 # PUBLIC_KEY_FILE, key material and signature packets both ways: a
 # difference is a warning, or with --require-published an error.
 # --check-signatures also verifies the InRelease and
-# repomd.xml.asc files the site serves next to the key and fails when their
+# repomd.xml.asc files the site at REPO_URL serves and fails when their
 # subkey is revoked, expired or has fewer than FAIL_DAYS left (warns under
 # WARN_DAYS): the repository is only re-signed when a tag is published.
 # --live says the repository is live (signing-key-check.yml: the packages
@@ -107,9 +107,13 @@
 #                           under which CI fails (default 90) or warns (180)
 #   RERUN_DAYS              --after-build: how much of FAIL_DAYS a re-run may
 #                           use up (default 30, how long GitHub re-runs a run)
-#   TEST_NOW, TEST_KEY_URL  tests only, refused under GitHub Actions: the
-#                           time to check for (epoch seconds) and the URL to
-#                           read the published key from (file:// works)
+#   TEST_NOW, TEST_KEY_URL, TEST_REPO_URL
+#                           tests only, refused under GitHub Actions: the
+#                           time to check for (epoch seconds), the URL to
+#                           read the published key from and the site's URL
+#                           (file:// works). Either URL alone leaves the
+#                           other at a file that does not exist, so a test
+#                           never reads the live site
 #
 # Annotations (::error:: etc.) go to stderr; in public mode errors that stop
 # the check early are also written to stdout, so the report says why.
@@ -118,7 +122,11 @@
 # curl.
 set -euo pipefail
 
-KEY_URL=https://packages.euro-office.org/keys/euro-office.asc
+# The key is UnityStack's and served next to the repositories of its other
+# products, not below this one (build/linux/README.md, "Package
+# repositories").
+KEY_URL=https://packages.unitystack.eu/keys/unitystack.asc
+REPO_URL=https://packages.unitystack.eu/euro-office
 README='build/linux/README.md, "Signing key"'
 EMERGENCY='build/linux/README.md, "If the CI secret leaks"'
 EXPORTDOC='build/linux/README.md, "Changing the public key"'
@@ -154,8 +162,8 @@ if { [ $public = 0 ] && [ $((require_published + check_signatures + live)) -gt 0
    { [ $public = 1 ] && [ $after_build = 1 ]; }; then
   echo "$usage" >&2; exit 2
 fi
-if [ "${GITHUB_ACTIONS:-}" = true ] && [ -n "${TEST_NOW:-}${TEST_KEY_URL:-}" ]; then
-  die "TEST_NOW and TEST_KEY_URL are for the tests only."
+if [ "${GITHUB_ACTIONS:-}" = true ] && [ -n "${TEST_NOW:-}${TEST_KEY_URL:-}${TEST_REPO_URL:-}" ]; then
+  die "TEST_NOW, TEST_KEY_URL and TEST_REPO_URL are for the tests only."
 fi
 FAIL_DAYS=${FAIL_DAYS:-90} WARN_DAYS=${WARN_DAYS:-180} RERUN_DAYS=${RERUN_DAYS:-30}
 NOW=${TEST_NOW:-$(date +%s)}
@@ -170,7 +178,11 @@ fpr_var() {   # fpr_var <name>: the variable's value in upper case, checked
   fi
   echo "$v"
 }
-url=${TEST_KEY_URL:-$KEY_URL}
+url=$KEY_URL repo_url=$REPO_URL
+if [ -n "${TEST_KEY_URL:-}${TEST_REPO_URL:-}" ]; then
+  url=${TEST_KEY_URL:-file:///nonexistent/keys/unitystack.asc}
+  repo_url=${TEST_REPO_URL:-file:///nonexistent/euro-office}
+fi
 pin=$(fpr_var LINUX_GPG_SIGN_SUBKEY)
 unpublished_ok=$(fpr_var LINUX_GPG_ALLOW_UNPUBLISHED_SUBKEY)
 [ $public = 0 ] || unpublished_ok=      # only the jobs that sign use it
@@ -621,8 +633,7 @@ esac
 if [ $check_signatures = 1 ] && [ "$pub_state" = none ]; then
   [ $live = 1 ] || note "The site does not serve the key yet, so there are no repository signatures to check."
 elif [ $check_signatures = 1 ]; then
-  base=${url%/keys/*} checked=() served=0
-  [ "$base" != "$url" ] || base=${url%/*}
+  base=${repo_url%/} checked=() served=0
   for p in apt/dists/stable/InRelease apt/dists/testing/InRelease \
            rpm/stable/repodata/repomd.xml.asc rpm/testing/repodata/repomd.xml.asc; do
     fetch "$base/$p" "$work/sig"
@@ -653,7 +664,7 @@ elif [ $check_signatures = 1 ]; then
   done
   [ ${#checked[@]} -eq 0 ] || note "Signed by a valid subkey with no expiry or $WARN_DAYS days or more left: ${checked[*]}."
   if [ $live = 1 ] && [ $served = 0 ]; then
-    err "$base serves the key but none of the repository's InRelease and repomd.xml.asc files, although the repository is live."
+    err "$url serves the key but $base serves none of the repository's InRelease and repomd.xml.asc files, although the repository is live."
   fi
 fi
 

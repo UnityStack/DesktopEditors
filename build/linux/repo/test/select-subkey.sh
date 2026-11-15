@@ -13,7 +13,9 @@
 # not by gpg's notion of "expired". The published key comes from
 # TEST_KEY_URL: a file:// URL, or a local python3 http.server for the HTTP
 # cases (skipped without python3; the keys are merged with python3 and
-# build/linux/merge-public-key.py, as the README does). Ed25519 keeps key generation fast; the script
+# build/linux/merge-public-key.py, as the README does). The sites for
+# --check-signatures are laid out like packages.unitystack.eu: the key at
+# keys/unitystack.asc, the repository below euro-office/ (TEST_REPO_URL). Ed25519 keeps key generation fast; the script
 # does not look at the algorithm. Needs bash 4, GnuPG 2.2+, curl and python3
 # (run.sh runs it in the builder image).
 set -euo pipefail
@@ -155,22 +157,23 @@ sign() {   # sign <keyring> <subkey> <date> <file> [--detach]
   at "$1" "$3" --yes --armor --local-user "$2!" "$mode" -o "$out" "$4"
 }
 for site in site site-bad; do
-  mkdir -p "$w/$site/keys" "$w/$site/apt/dists/stable" "$w/$site/apt/dists/testing" "$w/$site/rpm/stable/repodata"
-  cp "$w/pub.asc" "$w/$site/keys/euro-office.asc"
-  for s in stable testing; do printf 'Suite: %s\n' "$s" > "$w/$site/apt/dists/$s/Release"; done
-  printf '<repomd/>\n' > "$w/$site/rpm/stable/repodata/repomd.xml"
+  r=$w/$site/euro-office
+  mkdir -p "$w/$site/keys" "$r/apt/dists/stable" "$r/apt/dists/testing" "$r/rpm/stable/repodata"
+  cp "$w/pub.asc" "$w/$site/keys/unitystack.asc"
+  for s in stable testing; do printf 'Suite: %s\n' "$s" > "$r/apt/dists/$s/Release"; done
+  printf '<repomd/>\n' > "$r/rpm/stable/repodata/repomd.xml"
 done
-sign "$w/a" "$A" 2011-06-01 "$w/site/apt/dists/stable/Release"
-sign "$w/a" "$A" 2011-06-01 "$w/site/apt/dists/testing/Release"
-sign "$w/a" "$A" 2011-06-01 "$w/site/rpm/stable/repodata/repomd.xml" --detach
-sign "$w/other" "$OS" 2011-06-01 "$w/site-bad/apt/dists/stable/Release"
-cp "$w/site/apt/dists/testing/Release.signed" "$w/site-bad/apt/dists/testing/Release.signed"
-cp "$w/site/rpm/stable/repodata/repomd.xml.asc" "$w/site-bad/rpm/stable/repodata/"
-printf '<repomd>changed</repomd>\n' > "$w/site-bad/rpm/stable/repodata/repomd.xml"
+sign "$w/a" "$A" 2011-06-01 "$w/site/euro-office/apt/dists/stable/Release"
+sign "$w/a" "$A" 2011-06-01 "$w/site/euro-office/apt/dists/testing/Release"
+sign "$w/a" "$A" 2011-06-01 "$w/site/euro-office/rpm/stable/repodata/repomd.xml" --detach
+sign "$w/other" "$OS" 2011-06-01 "$w/site-bad/euro-office/apt/dists/stable/Release"
+cp "$w/site/euro-office/apt/dists/testing/Release.signed" "$w/site-bad/euro-office/apt/dists/testing/Release.signed"
+cp "$w/site/euro-office/rpm/stable/repodata/repomd.xml.asc" "$w/site-bad/euro-office/rpm/stable/repodata/"
+printf '<repomd>changed</repomd>\n' > "$w/site-bad/euro-office/rpm/stable/repodata/repomd.xml"
 for site in site site-bad; do
-  for s in stable testing; do mv "$w/$site/apt/dists/$s/Release.signed" "$w/$site/apt/dists/$s/InRelease"; done
+  for s in stable testing; do mv "$w/$site/euro-office/apt/dists/$s/Release.signed" "$w/$site/euro-office/apt/dists/$s/InRelease"; done
 done
-mkdir -p "$w/site-keyonly/keys"; cp "$w/pub.asc" "$w/site-keyonly/keys/euro-office.asc"
+mkdir -p "$w/site-keyonly/keys"; cp "$w/pub.asc" "$w/site-keyonly/keys/unitystack.asc"
 # Released signatures by S (after the emergency), and an empty directory.
 mkdir -p "$w/released-s/v2" "$w/released-none"
 cp -a "$w/released/v1" "$w/released-s/"
@@ -207,14 +210,15 @@ fails=0 n=0
 # Extra environment and options: the array EXTRA (VAR=value ... --option
 # [value] ...; a value after --released is taken as its argument); the
 # published key is URL (default: a file that does not exist, "not live
-# yet").
-EXTRA=() URL=
+# yet"), the site REPO (default: none, so the script reads no site).
+EXTRA=() URL='' REPO=''
 t() {
   local desc=$1 h=$2 pub=$3 when=$4 want=$5 out=$w/stdout errf=$w/stderr rc=0 got p ok=1 args=() next=
   shift 5
   [ "$h" != - ] || args=(--public)
   cp /dev/null "$out"
   local envs=(PUBLIC_KEY_FILE="$w/$pub" TEST_NOW="$(epoch "$when")" TEST_KEY_URL="${URL:-file://$w/not-published.asc}")
+  [ -z "$REPO" ] || envs+=(TEST_REPO_URL="$REPO")
   [ "$h" = - ] || envs+=(GNUPGHOME="$h")
   for p in "${EXTRA[@]}"; do
     if [ -n "$next" ]; then args+=("$p"); next=
@@ -265,7 +269,7 @@ t "the committed key is another key" "$w/a" pub-spare-expiry.asc 2012-06-01 ERRO
 t "S not in the committed key" "$w/s" pub-first.asc 2010-06-01 ERROR "::error::Signing subkey $S of LINUX_GPG_PRIVATE_KEY is not in .*pub-first.asc"
 t "the primary key expired" "$w/a" pub-short-primary.asc 2015-01-01 ERROR "::error::The primary key .* expired on 2014-02-01"
 EXTRA=(TEST_NOW=1 GITHUB_ACTIONS=true)
-t "TEST_NOW under GitHub Actions" "$w/a" pub.asc 2012-06-01 ERROR "::error::TEST_NOW and TEST_KEY_URL are for the tests only"
+t "TEST_NOW under GitHub Actions" "$w/a" pub.asc 2012-06-01 ERROR "::error::TEST_NOW, TEST_KEY_URL and TEST_REPO_URL are for the tests only"
 EXTRA=(FAIL_DAYS=ninety)
 t "FAIL_DAYS not a number" "$w/a" pub.asc 2012-06-01 ERROR "FAIL_DAYS must be a whole number"
 EXTRA=()
@@ -510,29 +514,35 @@ URL=file://$w/nothing-here.asc
 t "live, key not reachable: error" - pub.asc 2012-06-01 ERROR "::error::.* is not reachable .*but the repository is live"
 EXTRA=(--live --check-signatures)
 t "live, key not reachable, --check-signatures: error" - pub.asc 2012-06-01 ERROR "but the repository is live" '!no repository signatures'
-URL=file://$w/site/keys/euro-office.asc
+URL=file://$w/site/keys/unitystack.asc REPO=file://$w/site/euro-office
 t "live, site complete" - pub.asc 2012-06-01 OK '!::error' '!::warning'
-URL=file://$w/site-keyonly/keys/euro-office.asc
-t "live, key but no index files: error" - pub.asc 2012-06-01 ERROR "::error::.* serves the key but none of the repository's InRelease and repomd.xml.asc files"
+REPO=file://$w/site
+t "live, repository looked for next to the key, not below it: error" - pub.asc 2012-06-01 ERROR \
+  "::error::.*keys/unitystack.asc serves the key but .*/site serves none of the repository's InRelease and repomd.xml.asc files"
+REPO=
+t "live, TEST_KEY_URL alone: no site is read, not the live one" - pub.asc 2012-06-01 ERROR \
+  "::error::.* serves the key but file:///nonexistent/euro-office serves none" '!packages\.unitystack\.eu'
+URL=file://$w/site-keyonly/keys/unitystack.asc REPO=file://$w/site-keyonly/euro-office
+t "live, key but no index files: error" - pub.asc 2012-06-01 ERROR "::error::.* serves the key but .* serves none of the repository's InRelease and repomd.xml.asc files"
 EXTRA=(--check-signatures)
 t "not live, key but no index files: notices" - pub.asc 2012-06-01 OK '!::error'
-EXTRA=() URL=
+EXTRA=() URL='' REPO=''
 
 echo "--- public mode: --check-signatures (the signatures the site serves)"
-URL=file://$w/site/keys/euro-office.asc EXTRA=(--check-signatures)
+URL=file://$w/site/keys/unitystack.asc REPO=file://$w/site/euro-office EXTRA=(--check-signatures)
 t "signed by A, which never expires: healthy, A is CI's" - pub.asc 2012-06-01 OK \
   "::notice::Signed by a valid subkey with no expiry or 180 days or more left: apt/dists/stable/InRelease apt/dists/testing/InRelease rpm/stable/repodata/repomd.xml.asc" \
   "::notice::.*rpm/testing/repodata/repomd.xml.asc is not reachable .*no signature to check" \
   "CI signs with it \(signed the site's index files, 2011-06-01\)" '!::warning' '!::error'
 t "the site signed by A, A revoked in the committed key: error" - pub-rev.asc 2012-02-01 ERROR \
   "::error::.*apt/dists/stable/InRelease is signed by the revoked subkey $A. Publish a release"
-URL=file://$w/site-bad/keys/euro-office.asc
+URL=file://$w/site-bad/keys/unitystack.asc REPO=file://$w/site-bad/euro-office
 t "changed repomd.xml, InRelease of another key" - pub.asc 2012-06-01 ERROR \
   "::error::.*rpm/stable/repodata/repomd.xml.asc does not verify with" "::error::.*apt/dists/stable/InRelease does not verify with"
 URL=file://$w/nothing-here.asc
 t "site not live: no signatures to check" - pub.asc 2012-06-01 OK \
   "::notice::The site does not serve the key yet, so there are no repository signatures to check" '!InRelease'
-EXTRA=() URL=
+EXTRA=() URL='' REPO=''
 t "without --check-signatures: not checked" - pub.asc 2012-06-01 OK '!InRelease'
 
 echo "--- merge-public-key.py"

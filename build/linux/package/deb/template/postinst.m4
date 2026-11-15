@@ -15,13 +15,15 @@ set -e
 # another apt source uses it). Rewriting it is how apt users get a changed
 # key (a revocation, a new spare subkey): with a package update that is
 # still signed by a subkey they have (build/linux/README.md, "Signing
-# key").
+# key"). It is UnityStack's key, not this product's: the repositories of
+# UnityStack's other products are to use the same keyring file, which needs
+# the same key in all their packages (see fork.mk).
 
 PACKAGE="M4_PACKAGE_NAME"
 REPO_URI="M4_REPO_URL/apt"
 DEFAULTS="/etc/default/M4_REPO_NAME"
 SOURCES="/etc/apt/sources.list.d/M4_REPO_NAME.sources"
-KEYRING="/usr/share/keyrings/M4_REPO_NAME.asc"
+KEYRING="/usr/share/keyrings/M4_REPO_KEY_NAME.asc"
 
 # Prereleases come from the testing suite (stable + prereleases).
 case "M4_PACKAGE_VERSION" in

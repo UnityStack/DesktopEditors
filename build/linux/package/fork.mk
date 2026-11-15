@@ -17,20 +17,35 @@
 #   - AppStream metainfo in /usr/share/metainfo (deb, rpm and tar)
 # ==============================================================================
 
-# Package repository (served by packages.euro-office.org, built by
-# build/linux/repo/publish-repo.sh). Clients use $(REPO_URL)/apt and
-# $(REPO_URL)/rpm/<channel>/; REPO_NAME names every file the packages write:
-#   /etc/apt/sources.list.d/$(REPO_NAME).sources  /usr/share/keyrings/$(REPO_NAME).asc
+# Package repository (served under packages.unitystack.eu/euro-office/, built
+# by build/linux/repo/publish-repo.sh). Clients use $(REPO_URL)/apt and
+# $(REPO_URL)/rpm/<channel>/; REPO_NAME names the repository files the
+# packages write:
+#   /etc/apt/sources.list.d/$(REPO_NAME).sources
 #   /etc/yum.repos.d/$(REPO_NAME).repo            /etc/zypp/repos.d/$(REPO_NAME).repo
 #   /etc/default/$(REPO_NAME)                     (opt-out / "already added" state)
-REPO_URL ?= https://packages.euro-office.org
+REPO_URL ?= https://packages.unitystack.eu/euro-office
 REPO_NAME ?= euro-office
+
+# The signing key is UnityStack's, the same for the repositories of its other
+# products on packages.unitystack.eu, so its files are named after
+# REPO_KEY_NAME, not after the product:
+#   /usr/share/keyrings/$(REPO_KEY_NAME).asc      (apt Signed-By)
+#   /etc/pki/rpm-gpg/RPM-GPG-KEY-$(REPO_KEY_NAME) (rpm payload, gpgkey=)
+# The deb purge removes the keyring only when no apt source refers to it any
+# more, and the rpm scriptlets never remove the imported key (gpg-pubkey).
+# Other packages may use the same files only while they carry the same key,
+# byte for byte: rpm refuses two packages with different contents of the key
+# file, and every deb configure writes its own copy over the keyring. See
+# build/linux/README.md, "Package repositories".
+REPO_KEY_URL ?= https://packages.unitystack.eu/keys/unitystack.asc
+REPO_KEY_NAME ?= unitystack
 
 # Armored public key of the repository. The Dockerfile copies
 # build/linux/unitystack-package-signing.asc here, so the key exists once in
 # the repo and a change to the key (a revocation, a new spare subkey) only
 # touches that file.
-REPO_KEY ?= common/linux/$(REPO_NAME).asc
+REPO_KEY ?= common/linux/$(REPO_KEY_NAME).asc
 
 # AppStream component: euro-office.org reversed, '-' -> '_' (AppStream ids
 # must not contain '-').
@@ -47,13 +62,14 @@ RELEASE_TYPE := $(if $(findstring ~rc,$(BUILD_NUMBER))$(findstring ~beta,$(BUILD
 
 METAINFO = build/main/usr/share/metainfo/$(APPSTREAM_ID).metainfo.xml
 # build/rpm/ holds rpm-only payload; common.spec copies it next to build/main.
-RPM_GPG_KEY = build/rpm/etc/pki/rpm-gpg/RPM-GPG-KEY-$(REPO_NAME)
+RPM_GPG_KEY = build/rpm/etc/pki/rpm-gpg/RPM-GPG-KEY-$(REPO_KEY_NAME)
 
 # M4_PARAMS is a recursive variable that M4_DEB_PARAMS expands, so the deb
 # templates see these too.
 M4_PARAMS += -D M4_REPO_URL='$(REPO_URL)'
 M4_PARAMS += -D M4_REPO_NAME='$(REPO_NAME)'
 M4_PARAMS += -D M4_REPO_KEY='$(REPO_KEY)'
+M4_PARAMS += -D M4_REPO_KEY_NAME='$(REPO_KEY_NAME)'
 M4_PARAMS += -D M4_APPSTREAM_ID='$(APPSTREAM_ID)'
 M4_PARAMS += -D M4_APPSTREAM_DEVELOPER_ID='$(APPSTREAM_DEVELOPER_ID)'
 M4_PARAMS += -D M4_VCS_URL='$(VCS_URL)'
@@ -64,6 +80,8 @@ M4_PARAMS += -D M4_RELEASE_TYPE='$(RELEASE_TYPE)'
 
 RPM_PARAMS += --define '_repo_url $(REPO_URL)'
 RPM_PARAMS += --define '_repo_name $(REPO_NAME)'
+RPM_PARAMS += --define '_repo_key_url $(REPO_KEY_URL)'
+RPM_PARAMS += --define '_repo_key_name $(REPO_KEY_NAME)'
 
 build : $(METAINFO)
 

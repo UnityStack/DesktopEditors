@@ -61,7 +61,7 @@ FROM ubuntu:24.04 AS package
     # edits of upstream files as a patch: --fuzz=0 fails the build when the
     # upstream files moved on, instead of patching the wrong place.
     COPY build/linux/package/ /desktop-editors-package/
-    COPY build/linux/unitystack-package-signing.asc /desktop-editors-package/common/linux/euro-office.asc
+    COPY build/linux/unitystack-package-signing.asc /desktop-editors-package/common/linux/unitystack.asc
     COPY build/linux/package.patch /desktop-editors-package.patch
     RUN cd /desktop-editors-package && \
         patch -p1 --forward --fuzz=0 < /desktop-editors-package.patch

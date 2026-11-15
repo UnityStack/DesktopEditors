@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Offline checks of publish-repo.sh with small fake packages: channels, the
 # newest-$KEEP window, version order, idempotency, by-hash and repodata
-# retention, asset matching and the failure paths (bad tag, foreign assets
+# retention, the listings' dates, asset matching and the failure paths (bad tag, foreign assets
 # and key, damaged packages, the old 0~ce.rc.N scheme, duplicate versions,
 # a newer .state format). Runs in the builder
 # image (test/builder.Dockerfile), needs no network:
@@ -79,7 +79,8 @@ EOF
 
 publish() {   # <tag> <channel>
   "$repo/publish-repo.sh" --tag "$1" --channel "$2" --packages "$w/pkgs/$1" --site "$site" \
-    --asset-map "$w/assets/$1.tsv" --base-url http://packages.test --date 2026-11-03 2>"$w/log" \
+    --asset-map "$w/assets/$1.tsv" --base-url http://packages.test/euro-office \
+    --key-url http://packages.test/keys/unitystack.asc --date 2026-11-03 2>"$w/log" \
     || { cat "$w/log" >&2; return 1; }
 }
 versions() {  # <suite> <arch>: versions of the main package in that index
@@ -155,6 +156,16 @@ grep -q "^Filename: pool/v9.3.6-ce.rc.1/euro-office-euro-office-help_9.3.6-0.ce.
 [ "$(versions stable amd64)" = "" ] || fail "prerelease in stable"
 [ "$(versions testing arm64)" = "9.3.6-0~ce.rc.1 " ] || fail "testing: $(versions testing arm64)"
 ok "prerelease goes to testing only; asset names use '.', the duplicate help .deb is skipped"
+grep -qx 'URIs: http://packages.test/euro-office/apt' "$site/apt/euro-office.sources" &&
+  grep -qx 'baseurl=http://packages.test/euro-office/rpm/testing/' "$site/rpm/euro-office-testing.repo" &&
+  grep -qx 'gpgkey=http://packages.test/keys/unitystack.asc' "$site/rpm/euro-office-testing.repo" &&
+  grep -qx 'URIs: http://packages.test/euro-office/apt' "$site/README.txt" &&
+  grep -qx 'sudo rpm --import http://packages.test/keys/unitystack.asc' "$site/README.txt" &&
+  grep -q '^<head><title>Index of /euro-office/</title></head>' "$site/index.html" &&
+  grep -q '^<head><title>Index of /euro-office/apt/pool/v9.3.6-ce.rc.1/</title></head>' \
+    "$site/apt/pool/v9.3.6-ce.rc.1/index.html" ||
+  fail "--base-url and --key-url not in the .sources, .repo, README.txt files and the listings"
+ok "repository files, README.txt and listings: the site at --base-url, the key at --key-url"
 
 publish v9.3.6-ce.rc.2 prerelease
 h2=$(packages_gz_hash)
@@ -231,8 +242,11 @@ ok "three generations stay (apt and rpm), the fourth newest goes"
 
 # ── Idempotency ──
 snap() {
+  # The listing of a suite names the new Release files, and listing.tsv
+  # records their dates; checked below.
   (cd "$site" && find apt rpm .state -type f ! -path '*/history/*' ! -name 'Release*' ! -name InRelease \
-     ! -name 'repomd.xml*' ! -path '*/by-hash/*' ! -path 'rpm/*/repodata/*' -print0 | sort -z | xargs -0 sha256sum)
+     ! -name 'repomd.xml*' ! -path '*/by-hash/*' ! -path 'rpm/*/repodata/*' \
+     ! -regex 'apt/dists/[^/]*/index\.html' ! -name listing.tsv -print0 | sort -z | xargs -0 sha256sum)
   # repodata names carry checksums of content with timestamps; compare the
   # packages they list instead.
   for ch in stable testing; do echo "$ch $(rpm_versions "$ch")"; done
@@ -243,6 +257,23 @@ snap > "$w/after"
 diff "$w/before" "$w/after" >&2 || fail "re-publishing a tag changed the indexes"
 "$(dirname "$0")/check-site.sh" "$site" "$KEY_FILE" >/dev/null
 ok "re-publishing v9.3.6-ce changes no index; check-site.sh passes"
+
+# ── Listings ──
+# Later, over the same tree: the same files. A changed file gets the new
+# date, and only its line and the state change.
+cp -a "$site" "$w/later"
+later() { python3 -I "$repo/autoindex.py" --site "$w/later" --base-url http://packages.test/euro-office --now 4102444800; }
+later
+diff -r "$site" "$w/later" >&2 || fail "autoindex.py changed the listings of an unchanged tree"
+echo changed >> "$w/later/README.txt"
+later
+[ "$(diff "$site/index.html" "$w/later/index.html" | grep -c '^[<>]')" = 2 ] &&
+  grep -q '^<a href="README.txt">README.txt</a> .* 01-Jan-2100 00:00 ' "$w/later/index.html" ||
+  fail "a changed README.txt: $(diff "$site/index.html" "$w/later/index.html")"
+changed=$({ diff -rq "$site" "$w/later" || true; } | sed -E "s#^Files $site/([^ ]*) and .*#\1#" | LC_ALL=C sort | tr '\n' ' ')
+[ "$changed" = ".state/listing.tsv README.txt index.html " ] || fail "a changed README.txt changed $changed"
+rm -rf "$w/later"
+ok "listings: an unchanged tree keeps them byte for byte, a changed file gets the new date"
 
 # A tag can move between channels.
 publish v9.3.6-ce.1 prerelease

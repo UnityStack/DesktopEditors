@@ -14,11 +14,16 @@
 #    expiry; CI holds and signs with subkey 1. The key carries both of
 #    subkey 1's bindings, merged with build/linux/merge-public-key.py as
 #    the README does,
-# 2. runs check-site.sh (gpgv, by-hash, hrefs) and channels.sh (channels,
-#    version window, retention, failure paths, with fake packages),
-# 3. serves the site with the REAL nginx config of packages.euro-office.org
+# 2. runs check-site.sh (gpgv, by-hash, hrefs, listings) and channels.sh
+#    (channels, version window, retention, listing dates, failure paths, with
+#    fake packages), and maintainer-scripts.sh (the repository registration
+#    of the deb and rpm packages, in debian:13 and fedora:43),
+# 3. serves the site with the REAL nginx config of packages.unitystack.eu
 #    ($NGINX_CONF, from fluxcd-org-apps). Only its Pages upstream is swapped
-#    for a local static-file container; the 302 to GitHub Releases is real,
+#    for a local static-file container; the 302 to GitHub Releases is real.
+#    As in production, the repository is below /euro-office/ and the key is
+#    /keys/unitystack.asc on the same host, so the clients go through both;
+#    the listings of /, /keys/ and the site's directories are checked,
 # 4. points real clients at it, each with signature checks on:
 #      ubuntu:24.04 (also AppStream), ubuntu:22.04, debian:12, debian:13,
 #      fedora:43 (dnf5), rockylinux:9 (dnf4), opensuse/leap:15.6 (zypper)
@@ -54,20 +59,22 @@ src_root=$(cd "$here/../../../.." && pwd)           # DesktopEditors checkout
 TAG=${TAG:-v9.3.6-ce.rc.1}
 GH_REPO=${GH_REPO:-UnityStack/DesktopEditors}
 CACHE=${CACHE:-${TMPDIR:-/tmp}/eo-assets}
-NGINX_CONF=${NGINX_CONF:-$HOME/DevOps/unitystack-customer/customer-fluxcd/fluxcd-org-apps/websites/euro-office/files/downloads-nginx.conf}
-# The image downloads.yaml deploys.
+NGINX_CONF=${NGINX_CONF:-$HOME/DevOps/unitystack-customer/customer-fluxcd/fluxcd-org-apps/packages/files/nginx.conf}
+# The image fluxcd-org-apps deploys.
 NGINX_IMAGE=${NGINX_IMAGE:-nginxinc/nginx-unprivileged:1.30.6-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03}
 INSTALL=${INSTALL:-full}
 case "$INSTALL" in full|download) ;; *) echo "INSTALL must be full or download" >&2; exit 1 ;; esac
-HOST=packages.euro-office.org
-BASE=http://$HOST:8080       # the nginx container, under the real host name
+HOST=packages.unitystack.eu
+ORIGIN=http://$HOST:8080     # the nginx container, under the real host name
+BASE=$ORIGIN/euro-office     # publish-repo.sh --base-url
+KEY_URL=$ORIGIN/keys/unitystack.asc   # publish-repo.sh --key-url
 ALL_CLIENTS=(ubuntu:24.04 ubuntu:22.04 debian:12 debian:13 fedora:43 rockylinux:9 opensuse/leap:15.6)
 clients=("$@")
 [ ${#clients[@]} -gt 0 ] || clients=("${ALL_CLIENTS[@]}")
 
 [ -f "$NGINX_CONF" ] || { echo "nginx config $NGINX_CONF not found; set NGINX_CONF" >&2; exit 1; }
-grep -q 'proxy_pass https://unitystack.github.io;' "$NGINX_CONF" \
-  || { echo "$NGINX_CONF has no 'proxy_pass https://unitystack.github.io;' line to swap" >&2; exit 1; }
+grep -Eq 'proxy_pass https://unitystack\.github\.io[/;]' "$NGINX_CONF" \
+  || { echo "$NGINX_CONF has no 'proxy_pass https://unitystack.github.io' line to swap" >&2; exit 1; }
 
 id=eo-repo-test-$$
 WORK=${WORK:-$(mktemp -d "${TMPDIR:-/tmp}/eo-repo-test.XXXXXX")}
@@ -136,12 +143,14 @@ echo "primary $fpr, signing subkey $(cat "$WORK/sign_fpr")"
 publish() {
   builder -e SIGN_FPR="$(cat "$WORK/sign_fpr")" eo-repo-builder:test \
     /src/build/linux/repo/publish-repo.sh --tag "$TAG" --channel prerelease \
-      --packages /w/pkgs --site /w/site --asset-map /w/assets.tsv --base-url "$BASE"
+      --packages /w/pkgs --site /w/site --asset-map /w/assets.tsv --base-url "$BASE" --key-url "$KEY_URL"
 }
-# Index content without signatures, dates and checksum-named generations.
+# Index content without signatures, dates and checksum-named generations
+# (nor the suites' listings, which give the Release files' dates).
 snapshot() {
   builder eo-repo-builder:test bash -c 'cd /w/site && find apt .state -type f ! -path "*/by-hash/*" \
-      ! -path "*/history/*" ! -name "*Release*" ! -name repomd.xml -print0 | sort -z | xargs -0 sha256sum
+      ! -path "*/history/*" ! -name "*Release*" ! -name repomd.xml ! -regex "apt/dists/[^/]*/index\.html" \
+      ! -name listing.tsv -print0 | sort -z | xargs -0 sha256sum
     for ch in stable testing; do
       zcat rpm/$ch/$(grep -o "repodata/[^\"]*primary.xml.gz" rpm/$ch/repodata/repomd.xml) \
         | grep -o "<location href=\"[^\"]*\"\|<checksum type=\"sha256\" pkgid=\"YES\">[^<]*"
@@ -168,8 +177,16 @@ step "channels.sh (fake packages)"
 builder -e SIGN_FPR="$(cat "$WORK/sign_fpr")" eo-repo-builder:test \
   /src/build/linux/repo/test/channels.sh /src/build/linux/repo
 
+step "maintainer-scripts.sh (repository registration by the packages)"
+docker run --rm --pull missing --platform "linux/$deb_arch" -v "$src_root:/src:ro" debian:13 \
+  /src/build/linux/repo/test/maintainer-scripts.sh deb /src
+docker run --rm --pull missing --platform "linux/$deb_arch" -v "$src_root:/src:ro" fedora:43 \
+  /src/build/linux/repo/test/maintainer-scripts.sh rpm /src
+
 step "nginx ($NGINX_CONF) in front of a local Pages stand-in"
-sed 's|proxy_pass https://unitystack.github.io;|proxy_pass http://pages;|' "$NGINX_CONF" > "$WORK/nginx.conf"
+sed -E 's#proxy_pass https://unitystack\.github\.io([/;])#proxy_pass http://pages\1#' "$NGINX_CONF" > "$WORK/nginx.conf"
+! grep -nE '^[^#]*proxy_pass[^;]*unitystack\.github\.io' "$WORK/nginx.conf" \
+  || { echo "$NGINX_CONF still proxies to unitystack.github.io after the swap (lines above)"; exit 1; }
 docker network create "$id" >/dev/null
 # GitHub Pages stand-in: the site under /DesktopEditors/, like
 # https://unitystack.github.io/DesktopEditors/.
@@ -185,16 +202,57 @@ asset=$(awk -F'\t' -v a="_$deb_arch.deb" 'index($1, a) {print $1; exit}' "$WORK/
 expect() {   # <description> <expected> <actual>
   if [ "$2" = "$3" ]; then echo "ok   $1: $3"; else echo "FAIL $1: got '$3', expected '$2'"; exit 1; fi
 }
-expect "GET /apt/dists/testing/InRelease" "200 public, max-age=300, must-revalidate" \
+expect "GET /euro-office/apt/dists/testing/InRelease" "200 public, max-age=300, must-revalidate" \
   "$(curl_c -o /dev/null -D - "$BASE/apt/dists/testing/InRelease" | tr -d '\r' \
      | awk 'NR==1{s=$2} tolower($1)=="cache-control:"{sub(/^[^:]*: /,""); c=$0} END{print s, c}')"
-expect "GET /apt/pool/$TAG/$asset" "302 https://github.com/$GH_REPO/releases/download/$TAG/$asset" \
+expect "GET /euro-office/apt/pool/$TAG/$asset" "302 https://github.com/$GH_REPO/releases/download/$TAG/$asset" \
   "$(curl_c -o /dev/null -w '%{http_code} %{redirect_url}' "$BASE/apt/pool/$TAG/$asset")"
-expect "POST /apt/dists/testing/Release" "405" \
+expect "POST /euro-office/apt/dists/testing/Release" "405" \
   "$(curl_c -o /dev/null -w '%{http_code}' -X POST "$BASE/apt/dists/testing/Release")"
-expect "GET /keys/euro-office.asc (sha256)" "$(cat "$WORK/key.asc" | shasum -a 256)" \
-  "$(curl_c "$BASE/keys/euro-office.asc" | shasum -a 256)"
-expect "GET /apt/pool/x/y/z" "404" "$(curl_c -o /dev/null -w '%{http_code}' "$BASE/apt/pool/x/y/z")"
+expect "GET /keys/unitystack.asc (sha256)" "$(shasum -a 256 < "$WORK/key.asc")" \
+  "$(curl_c "$KEY_URL" | shasum -a 256)"
+expect "GET /euro-office/apt/pool/x/y/z" "404" "$(curl_c -o /dev/null -w '%{http_code}' "$BASE/apt/pool/x/y/z")"
+# Only the key and /euro-office/ come from Pages.
+expect "GET /apt/dists/testing/InRelease (outside /euro-office/)" "404" \
+  "$(curl_c -o /dev/null -w '%{http_code}' "$ORIGIN/apt/dists/testing/InRelease")"
+expect "GET /keys/unitystack.gpg (outside /euro-office/)" "404" \
+  "$(curl_c -o /dev/null -w '%{http_code}' "$ORIGIN/keys/unitystack.gpg")"
+# Listings, as nginx's autoindex writes them: "Index of <path>", then one
+# line per entry. listing <url> prints the status, the title and the entries.
+listing() {
+  curl_c -w '%{http_code}' "$1" | tr -d '\r' | awk '
+    /^<head><title>/ { sub(/^<head><title>/, ""); sub(/<\/title>.*/, ""); t = $0 }
+    /^<a href="/ && !/"\.\.\/"/ { sub(/^<a href="/, ""); sub(/".*/, ""); e = e " " $0 }
+    { status = $0 }
+    END { print status, t ":" e }'
+}
+lists() {   # <url> <name>
+  local l
+  l=$(listing "$1")
+  if [[ " ${l#*: } " == *" $2 "* ]]; then echo "ok   GET ${1#"$ORIGIN"}: lists $2"
+  else echo "FAIL GET ${1#"$ORIGIN"}: '$l' does not list $2"; exit 1; fi
+}
+expect "GET / (no page beyond the listing)" "200 Index of /: euro-office/ keys/" "$(listing "$ORIGIN/")"
+expect "GET /keys/" "200 Index of /keys/: unitystack.asc" "$(listing "$ORIGIN/keys/")"
+# The committed key is the one production serves; the listing gives its size.
+expect "GET /keys/: size of unitystack.asc" "$(wc -c < "$repo_dir/../unitystack-package-signing.asc" | tr -d ' ')" \
+  "$(curl_c "$ORIGIN/keys/" | awk '/href="unitystack.asc"/ {print $NF}' | tr -d '\r')"
+expect "GET /euro-office/" "200 Index of /euro-office/: apt/ keys/ rpm/ README.txt" "$(listing "$BASE/")"
+expect "GET /euro-office/apt/pool/" "200 Index of /euro-office/apt/pool/: $TAG/" "$(listing "$BASE/apt/pool/")"
+lists "$BASE/apt/pool/$TAG/" "$asset"
+lists "$BASE/rpm/testing/packages/$TAG/" "$(awk -F'\t' -v a=".$rpm_arch.rpm" 'index($1, a) {print $1; exit}' "$WORK/assets.tsv")"
+expect "GET /euro-office/apt/dists/testing/main/binary-amd64/by-hash/SHA256/ (a listing, not immutable)" \
+  "200 public, max-age=300, must-revalidate" \
+  "$(curl_c -o /dev/null -D - "$BASE/apt/dists/testing/main/binary-amd64/by-hash/SHA256/" | tr -d '\r' \
+     | awk 'NR==1{s=$2} tolower($1)=="cache-control:"{sub(/^[^:]*: /,""); c=$0} END{print s, c}')"
+readme=$(curl_c -w '\n%{http_code}' "$BASE/README.txt")
+expect "GET /euro-office/README.txt: status, the apt source of this site" "200 URIs: $BASE/apt" \
+  "$(tail -n 1 <<<"$readme") $(grep -x "URIs: $BASE/apt" <<<"$readme")"
+# A line feed in the path is rewritten like any other: Pages sees
+# /DesktopEditors/, never the raw request URI.
+expect "GET /euro-office/a%0ab?q=1" "404" "$(curl_c -o /dev/null -w '%{http_code}' "$BASE/a%0ab?q=1")"
+expect "Pages stand-in got /euro-office/a%0ab as" '"GET /DesktopEditors/a%0Ab HTTP/1.1"' \
+  "$(docker logs "$id-pages" 2>/dev/null | grep -o '"GET /[^ ]*a%0[aA]b[^ ]* HTTP/1.1"')"
 
 # The control for the rpm clients' check below: rpm 6 must reject the test
 # RPM with the key that lacks subkey 1's old binding, else that check proves
@@ -214,13 +272,13 @@ for c in "${clients[@]}"; do
   since=$(date -u +%s)
   case "$c" in
     ubuntu:24.04)
-      docker run --rm --pull missing --platform "linux/$deb_arch" --network "$id" -v "$here:/t:ro" "$c" /t/client-apt.sh "$BASE" testing "$fpr" "$INSTALL" appstream ;;
+      docker run --rm --pull missing --platform "linux/$deb_arch" --network "$id" -v "$here:/t:ro" "$c" /t/client-apt.sh "$BASE" "$KEY_URL" testing "$fpr" "$INSTALL" appstream ;;
     ubuntu:*|debian:*)
-      docker run --rm --pull missing --platform "linux/$deb_arch" --network "$id" -v "$here:/t:ro" "$c" /t/client-apt.sh "$BASE" testing "$fpr" "$INSTALL" ;;
+      docker run --rm --pull missing --platform "linux/$deb_arch" --network "$id" -v "$here:/t:ro" "$c" /t/client-apt.sh "$BASE" "$KEY_URL" testing "$fpr" "$INSTALL" ;;
     fedora:*|rockylinux:*|almalinux:*)
       docker run --rm --pull missing --platform "linux/$deb_arch" --network "$id" -v "$here:/t:ro" -v "$WORK/package-key.asc:/k.asc:ro" \
         -v "$WORK/subkey-test.rpm:/subkey-test.rpm:ro" "$c" \
-        /t/client-dnf.sh "$BASE" testing "$fpr" "$INSTALL" /k.asc /subkey-test.rpm "$(cat "$WORK/sign_fpr")" ;;
+        /t/client-dnf.sh "$BASE" "$KEY_URL" testing "$fpr" "$INSTALL" /k.asc /subkey-test.rpm "$(cat "$WORK/sign_fpr")" ;;
     opensuse/*)
       # The RPM of v9.3.6-ce.rc.1 requires Fedora package names, which
       # openSUSE does not have (fixed for later builds in package.patch);
@@ -228,12 +286,12 @@ for c in "${clients[@]}"; do
       shim=0; [ "$TAG" = v9.3.6-ce.rc.1 ] && shim=1
       docker run --rm --pull missing --platform "linux/$deb_arch" --network "$id" -v "$here:/t:ro" -v "$WORK/package-key.asc:/k.asc:ro" \
         -v "$WORK/subkey-test.rpm:/subkey-test.rpm:ro" -e SHIM_MISSING=$shim "$c" \
-        /t/client-zypper.sh "$BASE" testing "$fpr" "$INSTALL" /k.asc /subkey-test.rpm "$(cat "$WORK/sign_fpr")" ;;
+        /t/client-zypper.sh "$BASE" "$KEY_URL" testing "$fpr" "$INSTALL" /k.asc /subkey-test.rpm "$(cat "$WORK/sign_fpr")" ;;
     *) echo "unknown client $c"; exit 1 ;;
   esac
   # The package itself came from GitHub through the redirect.
   if docker logs --since "$since" "$id-nginx" 2>/dev/null \
-      | grep -E '"GET /(apt/pool|rpm/testing/packages)/[^ ]*euro-office-euro-office[^ ]* HTTP/1.1" 302 ' \
+      | grep -E '"GET /euro-office/(apt/pool|rpm/testing/packages)/[^ ]*euro-office-euro-office[^ ]* HTTP/1.1" 302 ' \
       | grep -v '"curl/' ; then
     echo "ok   $c fetched the package through the 302"
   else

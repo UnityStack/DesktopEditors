@@ -54,8 +54,8 @@ n=$(gpg --homedir "$merged" --batch --list-packets "$pub" | grep -c 'sigclass 0x
 
 mkdir -p "$GNUPGHOME"; chmod 700 "$GNUPGHOME"
 gpg --homedir "$full" --batch --armor --export-secret-subkeys "$sub1!" | gpg --batch --quiet --import
-# Not live: the real https://packages.euro-office.org key must not be asked.
-sign_fpr=$(PUBLIC_KEY_FILE=$pub TEST_KEY_URL=file:///nonexistent/euro-office.asc \
+# Not live: the real https://packages.unitystack.eu key must not be asked.
+sign_fpr=$(PUBLIC_KEY_FILE=$pub TEST_KEY_URL=file:///nonexistent/unitystack.asc \
            bash "$here/../../select-signing-subkey.sh")
 [ "$sign_fpr" = "$sub1" ] || { echo "select-signing-subkey.sh picked $sign_fpr, not subkey 1 ($sub1)" >&2; exit 1; }
 echo "$sign_fpr"

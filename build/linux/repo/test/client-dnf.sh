@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # Runs inside a Fedora/RHEL-family container (dnf5 or dnf4):
-#   client-dnf.sh <base url> <channel> <key fingerprint> <full|download> [extra key file] [test rpm] [its signing subkey]
+#   client-dnf.sh <base url> <key url> <channel> <key fingerprint> <full|download> [extra key file] [test rpm] [its signing subkey]
 # The .repo has gpgcheck=1 and repo_gpgcheck=1, so dnf only reads verified
 # metadata and installs only signed packages. The extra key is the real
 # package-signing key: the rc.1 RPMs are signed with it, the test repository
 # with a throwaway key.
 set -euo pipefail
-base=$1 channel=$2 fpr=$3 mode=$4 extra=${5:-} test_rpm=${6:-} sub_fpr=${7:-}
+base=$1 key_url=$2 channel=$3 fpr=$4 mode=$5 extra=${6:-} test_rpm=${7:-} sub_fpr=${8:-}
 . /etc/os-release; echo "== $PRETTY_NAME, $(rpm --version), dnf $(dnf --version 2>/dev/null | head -n1)"
 command -v gpg >/dev/null || dnf -y -q install gnupg2 >/dev/null
 
-curl -fsS -o /tmp/euro-office.asc "$base/keys/euro-office.asc"
-got=$(gpg --batch --with-colons --show-keys /tmp/euro-office.asc | awk -F: '$1=="fpr"{print $10; exit}')
+curl -fsS -o /tmp/unitystack.asc "$key_url"
+got=$(gpg --batch --with-colons --show-keys /tmp/unitystack.asc | awk -F: '$1=="fpr"{print $10; exit}')
 [ "$got" = "$fpr" ] || { echo "FAIL: key fingerprint $got, expected $fpr"; exit 1; }
 echo "ok   key fingerprint $got"
-rpm --import /tmp/euro-office.asc
+rpm --import /tmp/unitystack.asc
 [ -n "$extra" ] && rpm --import "$extra"
 
 # A package signature of the throwaway key's subkey 1 (CI's), made before
@@ -35,6 +35,7 @@ fi
 repo=euro-office.repo; [ "$channel" = testing ] && repo=euro-office-testing.repo
 curl -fsS -o "/etc/yum.repos.d/$repo" "$base/rpm/$repo"
 grep -qx 'repo_gpgcheck=1' "/etc/yum.repos.d/$repo"
+grep -qx "gpgkey=$key_url" "/etc/yum.repos.d/$repo" || { echo "FAIL: the .repo's gpgkey= is not $key_url"; exit 1; }
 id=$(sed -n 's/^\[\(.*\)\]$/\1/p' "/etc/yum.repos.d/$repo")
 # dnf keeps the keys for repo_gpgcheck in a keyring of its own (not the rpm
 # database), so the first run reports the key missing, imports it from the
@@ -46,7 +47,7 @@ if grep -q 'Fingerprint' /tmp/makecache.log; then
   # dnf5 and dnf 4.20 print the primary key's fingerprint, dnf 4.14 (EL9)
   # the first signing subkey's, even when that one has expired (the README
   # lists both).
-  first=$(gpg --batch --with-colons --show-keys /tmp/euro-office.asc \
+  first=$(gpg --batch --with-colons --show-keys /tmp/unitystack.asc \
           | awk -F: '$1=="sub" && $12 ~ /s/ {s=1; next} s && $1=="fpr" {print $10; exit}')
   [ "$imported" = "$fpr" ] || [ "$imported" = "$first" ] \
     || { echo "FAIL: dnf showed key $imported, neither the primary key $fpr nor the first signing subkey $first"; exit 1; }
