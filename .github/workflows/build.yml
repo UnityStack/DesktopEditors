@@ -1410,12 +1410,108 @@ jobs:
             --output "$DMG_PATH" \
             --title "${{ matrix.brand.product_name }}"
 
+      # On tags the DMG goes to sign-macos as macos-unsigned-*; it uploads
+      # the signed and notarized macos-packages-* that publish-release picks
+      # up. Branch and PR builds stay unsigned and are uploaded as
+      # macos-packages-* here.
       - uses: actions/upload-artifact@v4
         with:
-          name: macos-packages-${{ matrix.brand.name }}-arm64
+          name: ${{ startsWith(github.ref, 'refs/tags/') && 'macos-unsigned' || 'macos-packages' }}-${{ matrix.brand.name }}-arm64
           path: ${{ env.DMG_PATH }}
+          if-no-files-found: error
           # Kept longer on tags for the publish jobs and the manual signing.
           retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 7 }}
+
+  # ─────────────────────────────────────────────────────────────
+  # SIGN (macOS) - tags only
+  #
+  # Signs macos-unsigned-euro-office-arm64 with the Developer ID
+  # Application certificate of UnityStack GmbH and notarizes it with
+  # build/macos/sign.sh: every Mach-O inside-out with the hardened
+  # runtime, a secure timestamp and the entitlements in
+  # build/macos/entitlements/, a smoke test (the signed x2t converts a
+  # document, the app runs for 20 s and changes no file in its bundle),
+  # notarization and stapling of the app, then the DMG rebuilt with the
+  # same layout, signed, notarized and stapled. The certificate lives in a
+  # temporary keychain that is deleted at the end. Uploads
+  # macos-packages-euro-office-arm64, the artifact publish-release picks
+  # up. Secrets and setup: build/macos/README.md, "Signing and
+  # notarization".
+  # ─────────────────────────────────────────────────────────────
+  sign-macos:
+    name: sign-macos (arm64)
+    runs-on: macos-14          # same image as build-macos
+    needs: build-macos
+    if: startsWith(github.ref, 'refs/tags/')
+    environment: signing
+    permissions:
+      contents: read
+      actions: read
+    env:
+      BRAND: euro-office
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: false
+          sparse-checkout: build/macos
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: macos-unsigned-${{ env.BRAND }}-arm64
+          path: unsigned
+
+      - name: Sign, notarize and staple (sign.sh)
+        env:
+          APPLE_DEVELOPER_ID_P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+          APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dmgs=(unsigned/*.dmg)
+          if [ ${#dmgs[@]} -ne 1 ]; then
+            echo "::error::Expected one .dmg in macos-unsigned-$BRAND-arm64, found ${#dmgs[@]}."
+            exit 1
+          fi
+          bash build/macos/sign.sh --input "${dmgs[0]}" --output "dist/$(basename "${dmgs[0]}")" \
+            --work-dir "$RUNNER_TEMP/macos-signing" --smoke-test
+
+      # sign.sh restores the keychain search list and deletes its keychain
+      # ($RUNNER_TEMP/eo-signing-keychain.*) and work directory itself; this
+      # covers a run that was killed before its cleanup ran.
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          shopt -s nullglob
+          for kc in "$RUNNER_TEMP"/eo-signing-keychain.*/signing.keychain-db; do
+            security delete-keychain "$kc" 2>/dev/null || true
+          done
+          rm -rf "$RUNNER_TEMP"/eo-signing-keychain.* "$RUNNER_TEMP/macos-signing"
+
+      # Flat, like the Windows packages. As in sign-linux, the DMG first
+      # gets the name GitHub gives the release asset (the "~" of 0~ce
+      # becomes "."), so the checksum file names the downloaded file.
+      - name: Write the checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          for f in *.dmg; do
+            g=$(sed -E 's/[^A-Za-z0-9._-]/./g' <<<"$f")
+            if [ "$g" != "$f" ]; then mv -v -- "$f" "$g"; fi
+          done
+          shasum -a 256 -- *.dmg > SHA256SUMS-macos-arm64.txt
+          cat SHA256SUMS-macos-arm64.txt
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: macos-packages-${{ env.BRAND }}-arm64
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
 
   # ─────────────────────────────────────────────────────────────
   # Points release/v* PRs (opened by Euro-Office/release) to the test
@@ -1488,12 +1584,11 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   # PUBLISH - euro-office to GitHub Release (this repository)
   #
-  # Windows and Linux packages are the signed ones from sign-windows and
-  # sign-linux (the unsigned tag builds are linux-unsigned-* and
-  # windows-signing-bundle-*, which the pattern below does not match).
-  # A failed or skipped signing job skips this job. macOS is unsigned
-  # for now.
-  # TODO(signing): macOS (Apple notarization).
+  # Windows, Linux and macOS packages are the signed ones from
+  # sign-windows, sign-linux and sign-macos (the unsigned tag builds are
+  # linux-unsigned-*, windows-signing-bundle-* and macos-unsigned-*,
+  # which the pattern below does not match). A failed or skipped signing
+  # job skips this job.
   #
   # Each artifact lands in its own directory: a file name in two of
   # them (the arch-independent help packages before sign-linux kept them
@@ -1504,7 +1599,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   publish-release:
     runs-on: ubuntu-latest
-    needs: [release-info, sign-linux, sign-windows, build-macos]
+    needs: [release-info, sign-linux, sign-windows, sign-macos]
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
