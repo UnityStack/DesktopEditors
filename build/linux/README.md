@@ -96,8 +96,10 @@ The desktop stage (in the bake Dockerfile) follows the standard sequence:
 1. Install the build/system dependencies into the image.
 2. Copy in the relevant submodules (`desktop-sdk`, `desktop-apps`, `core-fonts`)
    plus branding overlays.
-3. Configure CMake with the vcpkg toolchain, Ninja, and `ccache`, then
-   `cmake --build` / `cmake --install`.
+3. Build with `desktop-apps/scripts/build.sh`, then `cmake --install`. It
+   links the prebuilt core from the `core-package` context, which
+   `fetch-core.sh` fills before the bake when the build cache has a package for
+   the `core` checkout; with an empty context it builds core first.
 4. Overlay the `desktop-common` payload onto the installed tree
    (`COPY --from=desktop-common`).
 5. Run `allfontsgen` (fonts) and `allthemesgen` (slide-theme thumbnails), then
@@ -136,7 +138,9 @@ On tag pushes `build-linux` uploads its packages as
    (`build/linux/import-signing-key.sh`, see [The checks](#the-checks)),
 2. on arm64, drops the arch-independent help packages (`_all.deb`,
    `.noarch.rpm`, `-any.tar.xz`): both arches build them, with different
-   bytes under the same name, and only amd64's are released,
+   bytes under the same name, and only amd64's are released. Since 9.3.8
+   desktop-apps builds them only with `WITH_HELP=1` (the offline help is
+   still ONLYOFFICE-branded), so CI has none to drop,
 3. signs every `.rpm` with `rpmsign --addsign` and checks each one with
    `rpmkeys --checksig` against the public key,
 4. renames the files to the names GitHub gives release assets (`~` becomes
@@ -710,7 +714,8 @@ gpg --import unitystack-package-signing.asc
 
 # Checksums (all package types). sha256sum warns about the
 # signature lines; that is expected. The help packages (_all.deb,
-# .noarch.rpm, -any.tar.xz) are listed in SHA256SUMS-linux-amd64 only.
+# .noarch.rpm, -any.tar.xz; releases before 9.3.8 only) are listed in
+# SHA256SUMS-linux-amd64 only.
 gpg --verify SHA256SUMS-linux-amd64.txt.asc
 sha256sum --ignore-missing -c SHA256SUMS-linux-amd64.txt.asc
 
@@ -726,7 +731,7 @@ repositories for apt (Debian, Ubuntu, Linux Mint), dnf (Fedora, RHEL,
 AlmaLinux, Rocky Linux) and zypper (openSUSE). Users install once and get
 updates through their package manager. The apt repository also carries AppStream (DEP-11) data, so
 software centres such as the Ubuntu App Center show the publisher (UnityStack
-GmbH), the licence (AGPL-3.0-only) and the icon instead of "Unknown
+GmbH), the licence (AGPL-3.0-only AND CC-BY-SA-4.0) and the icon instead of "Unknown
 publisher" and "Potentially unsafe".
 
 The `.deb` and `.rpm` from the releases page add the repository themselves

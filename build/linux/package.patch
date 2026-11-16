@@ -18,9 +18,10 @@ place. To change or rebase it, edit a copy of the files and regenerate with
                            %postun on erase removes it again; ships
                            the metainfo and the rpm-only payload (repository
                            key); fixes the "euro-office" comparison, which
-                           never matched COMPANY_NAME "Euro-Office" (no help
-                           subpackage, no /usr/bin/desktopeditors, and a
-                           mode-777 /etc/<package> directory)
+                           never matched COMPANY_NAME "Euro-Office" (no
+                           /usr/bin/desktopeditors, and a mode-777
+                           /etc/<package> directory). The help subpackage
+                           follows upstream's WITH_HELP (off by default).
   rpm/requires.spec        Requires by soname and "Fedora or openSUSE" font
                            names, so the one RPM also installs on openSUSE
                            (Fedora package names such as boost-filesystem or
@@ -69,16 +70,7 @@ place. To change or rebase it, edit a copy of the files and regenerate with
  Name: %{_package_name}
  Version: %{_product_version}
  Release: %{_build_number}
-@@ -27,7 +31,7 @@
- Open-source office suite pack that comprises all the tools you need to
- work offline with documents, spreadsheets, presentations, PDFs, and PDF forms.
- 
--%if "%{_company_name}" == "euro-office"
-+%if "%{_company_name_low}" == "euro-office"
- %package help
- Summary: Offline help for %{_company_name} %{_product_name}
- BuildArch: noarch
-@@ -51,9 +55,11 @@
+@@ -49,9 +53,11 @@
  
  mkdir -p %{buildroot}
  cp -rt %{buildroot}/ $BUILD_DIR/main/*
@@ -89,28 +81,24 @@ place. To change or rebase it, edit a copy of the files and regenerate with
 -%if "%{_company_name}" == "euro-office"
 +%if "%{_company_name_low}" == "euro-office"
  ln -srf $BIN_DIR/%{_desktopeditors_exec} $BIN_DIR/desktopeditors
- cp -rt %{buildroot}/ $BUILD_DIR/help/*
  %else
-@@ -70,8 +76,10 @@
+ ETC_DIR=%{buildroot}%{_sysconfdir}
+@@ -70,11 +76,13 @@
  %attr(-, root, root) %{_datadir}/doc/*
  %attr(-, root, root) %{_datadir}/icons/*
  %attr(-, root, root) %{_datadir}/licenses/*
 +%attr(-, root, root) %{_datadir}/metainfo/*
 +%attr(644, root, root) %{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-%{_repo_key_name}
  %attr(755, root, root) %{_bindir}/%{_desktopeditors_exec}
+ %if "%{_with_help}" == "1"
+ %exclude /opt/%{_desktopeditors_prefix}/editors/web-apps/apps/*/main/resources/help
+ %endif
 -%if "%{_company_name}" == "euro-office"
 +%if "%{_company_name_low}" == "euro-office"
  %attr(-, root, root) %{_bindir}/desktopeditors
- %exclude /opt/%{_desktopeditors_prefix}/editors/web-apps/apps/*/main/resources/help
  %else
-@@ -81,15 +89,93 @@
- %attr(777, root, root) %{_sysconfdir}/%{_package_name}
- %endif
- 
--%if "%{_company_name}" == "euro-office"
-+%if "%{_company_name_low}" == "euro-office"
- %files help
- %defattr(-, root, root, -)
+ #%attr(755, root, root) %{_bindir}/%{_imageviewer_exec}
+@@ -89,9 +97,87 @@
  /opt/%{_desktopeditors_prefix}/editors/web-apps/apps/*/main/resources/help
  %endif
  

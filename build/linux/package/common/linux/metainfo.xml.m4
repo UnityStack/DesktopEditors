@@ -4,7 +4,8 @@
 <component type="desktop-application">
   <id>M4_APPSTREAM_ID</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>AGPL-3.0-only</project_license>
+  <!-- As the License fields of the deb and rpm (desktop-apps/package). -->
+  <project_license>AGPL-3.0-only AND CC-BY-SA-4.0</project_license>
 
   <name>M4_COMPANY_NAME</name>
   <summary>Edit documents, spreadsheets, presentations and PDFs</summary>
