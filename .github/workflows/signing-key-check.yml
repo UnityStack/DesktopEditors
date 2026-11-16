@@ -1,0 +1,164 @@
+name: Signing key check
+
+# Monthly watchdog for the Linux package-signing key and the repository
+# site (build/linux/README.md, "The checks"). It sees only the committed
+# public key (the tag-only `signing` environment and its secret stay out of
+# reach) and runs build/linux/select-signing-subkey.sh --public
+# --require-published --check-signatures --released, plus --live once the
+# `packages` branch exists. It fails when
+#
+# - https://packages.unitystack.eu/keys/unitystack.asc serves another key
+#   than the committed one (key material or signature packets; expected
+#   after a key change until the next release), or, once the repository
+#   is live, serves no key, or https://packages.unitystack.eu/euro-office/
+#   serves none of the repository's InRelease and repomd.xml.asc files,
+# - the committed key lacks a signature packet the published key has, or no
+#   longer verifies a signature of the newest 10 releases the way rpm 6
+#   does (rpm 6 on Fedora would then reject those releases' RPMs),
+# - the committed key has no valid signing subkey, or lists a subkey's
+#   revocation before its binding (rpm 4.14 and 4.16 refuse such a key),
+# - an InRelease or repomd.xml.asc on the site is signed by a revoked or
+#   expired subkey (or one with fewer than 90 days left, FAIL_DAYS): the
+#   repository is re-signed only when a tag is published,
+# - the committed key is not exactly one public key (secret key material,
+#   more than one armored block), or the site serves secret key material,
+# - build/linux/unitystack-package-signing.ci-subkey (or
+#   LINUX_GPG_SIGN_SUBKEY) designates a subkey that is not valid.
+#
+# It warns (exit 3) when not every released signature could be downloaded,
+# when the newest valid signature is by another subkey than the designated
+# one, when the committed key lists the published key's subkeys in another
+# order, when the key has no spare (fewer than two valid signing
+# subkeys; CI holds exactly one), when a valid subkey that has an expiry
+# has fewer than 180 days left (WARN_DAYS; signing subkeys without expiry
+# are the normal case), when one is not in the published key yet, and when
+# the primary key expires. The report names the subkey CI holds from the
+# designation, else from the newest signature it verified (the site's or a
+# release's); the others are spares.
+#
+# Errors and warnings open one issue, or update the open one and comment;
+# a later run without either closes it. Errors also fail the run. If the
+# repository has Issues turned off (forks have them off by default), or the
+# issue cannot be written, warnings fail the run as well: GitHub then
+# notifies the user who last changed the cron line below.
+#
+# GitHub disables this schedule after 60 days without activity in a public
+# repository; the signing-key job of build.yml warns on the next push or
+# PR. Re-enable it with `gh workflow enable signing-key-check.yml`.
+on:
+  schedule:
+    - cron: '23 5 1 * *'       # 05:23 UTC on the 1st of every month
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: signing-key-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write            # the one "signing key needs attention" issue
+    env:
+      PUBLIC_KEY_FILE: build/linux/unitystack-package-signing.asc
+      ISSUE_TITLE: 'Linux package signing key needs attention'
+      SITE_BRANCH: packages    # the branch publish-repo pushes the site to
+      LINUX_GPG_SIGN_SUBKEY: ${{ vars.LINUX_GPG_SIGN_SUBKEY }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          sparse-checkout: |
+            build/linux/fetch-released-signatures.sh
+            build/linux/select-signing-subkey.sh
+            build/linux/unitystack-package-signing.asc
+            build/linux/unitystack-package-signing.ci-subkey
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Download the released signatures
+        run: bash build/linux/fetch-released-signatures.sh "$RUNNER_TEMP/released"
+
+      # state: healthy (exit 0), attention (warnings only, exit 3) or failed.
+      # The repository counts as live unless the branch list shows no
+      # SITE_BRANCH, so a failing API call cannot hide an outage.
+      - name: Check the signing key
+        id: check
+        run: |
+          set -uo pipefail
+          live=(--live)
+          if branches=$(gh api --paginate "repos/$GITHUB_REPOSITORY/branches" --jq '.[].name'); then
+            grep -qxF "$SITE_BRANCH" <<<"$branches" || live=()
+          else
+            echo "::warning::Cannot list the branches; checking the site as live."
+          fi
+          rc=0
+          bash build/linux/select-signing-subkey.sh --public --require-published --check-signatures \
+            --released "$RUNNER_TEMP/released" "${live[@]}" > "$RUNNER_TEMP/report.md" || rc=$?
+          tee -a "$GITHUB_STEP_SUMMARY" < "$RUNNER_TEMP/report.md"
+          case $rc in
+            0) state=healthy ;;
+            3) state=attention ;;
+            *) state=failed ;;
+          esac
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          echo "Signing key check: $state (exit $rc)."
+
+      # Never fails the job by itself: when the issue cannot be written,
+      # filed stays false and the next step fails the run instead.
+      - name: Open, update or close the issue
+        id: issue
+        env:
+          STATE: ${{ steps.check.outputs.state }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .has_issues 2>/dev/null)" != true ]; then
+            echo "::warning::Issues are turned off for $GITHUB_REPOSITORY (or cannot be read), so this check reports by failing its run only. Turn them on in Settings, General, Features (build/linux/README.md, \"Repository settings\")."
+            exit 0
+          fi
+          # Every open issue, not a search: the search index can lag behind.
+          if ! number=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title \
+                          --jq 'map(select(.title == env.ISSUE_TITLE)) | .[0].number // empty'); then
+            echo "::warning::Cannot list the issues of $GITHUB_REPOSITORY."
+            exit 0
+          fi
+          if [ "$STATE" = healthy ]; then
+            if [ -n "$number" ]; then
+              gh issue close "$number" -R "$GITHUB_REPOSITORY" --comment "The signing key check passes again ($RUN_URL)." \
+                || echo "::warning::Cannot close issue #$number."
+            fi
+            exit 0
+          fi
+          readme="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/build/linux/README.md#signing-key"
+          what="found problems"; [ "$STATE" = attention ] || what="failed"
+          {
+            echo "The monthly check of the Linux package-signing key $what. See [build/linux/README.md, \"Signing key\"]($readme)."
+            echo
+            cat "$RUNNER_TEMP/report.md"
+            echo
+            echo "Last checked by $RUN_URL. The monthly signing-key-check workflow updates this issue and closes it once the check reports neither errors nor warnings."
+          } > "$RUNNER_TEMP/issue.md"
+          if [ -n "$number" ]; then
+            gh issue edit "$number" -R "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/issue.md" &&
+              gh issue comment "$number" -R "$GITHUB_REPOSITORY" --body "Still needs attention: $STATE ($RUN_URL)." &&
+              echo "filed=true" >> "$GITHUB_OUTPUT" || echo "::warning::Cannot update issue #$number."
+          else
+            gh issue create -R "$GITHUB_REPOSITORY" --title "$ISSUE_TITLE" --body-file "$RUNNER_TEMP/issue.md" &&
+              echo "filed=true" >> "$GITHUB_OUTPUT" || echo "::warning::Cannot create the issue."
+          fi
+
+      - name: Fail on findings
+        if: steps.check.outputs.state == 'failed' || (steps.check.outputs.state == 'attention' && steps.issue.outputs.filed != 'true')
+        env:
+          STATE: ${{ steps.check.outputs.state }}
+        run: |
+          if [ "$STATE" = failed ]; then
+            echo "::error::The signing key check failed; see the report above and the issue '$ISSUE_TITLE'."
+          else
+            echo "::error::The signing key check has warnings, and no issue could be filed for them; see the report above."
+          fi
+          exit 1

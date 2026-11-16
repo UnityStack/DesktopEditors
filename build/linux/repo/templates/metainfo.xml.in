@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Fallback AppStream metainfo for releases whose packages do not ship
+  /usr/share/metainfo/org.euro_office.desktopeditors.metainfo.xml yet
+  (v9.3.6-ce.rc.1 and older). publish-repo.sh fills in @VERSION@,
+  @RELEASE_TYPE@ and @DATE@. Keep it in step with the packaging template
+  build/linux/package/common/linux/metainfo.xml.m4, which publish-repo.sh
+  renders instead when it exists.
+-->
+<component type="desktop-application">
+  <id>org.euro_office.desktopeditors</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-only</project_license>
+  <name>Euro-Office</name>
+  <summary>Edit documents, spreadsheets, presentations and PDFs</summary>
+  <description>
+    <p>
+      Euro-Office is an office suite for text documents, spreadsheets,
+      presentations, PDFs and PDF forms. It opens and saves Microsoft Office
+      and OpenDocument formats and works offline.
+    </p>
+    <p>
+      This is the unofficial Community Edition, built and signed by UnityStack
+      GmbH. It is not affiliated with the Euro-Office project.
+    </p>
+  </description>
+  <developer_name>UnityStack GmbH</developer_name>
+  <developer id="eu.unitystack">
+    <name>UnityStack GmbH</name>
+  </developer>
+  <url type="homepage">https://euro-office.org</url>
+  <url type="bugtracker">https://github.com/UnityStack/DesktopEditors/issues</url>
+  <url type="vcs-browser">https://github.com/UnityStack/DesktopEditors</url>
+  <launchable type="desktop-id">euro-office-euro-office.desktop</launchable>
+  <icon type="stock">euro-office-euro-office</icon>
+  <categories>
+    <category>Office</category>
+  </categories>
+  <provides>
+    <binary>euro-office-euro-office</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@VERSION@" type="@RELEASE_TYPE@" date="@DATE@"/>
+  </releases>
+</component>

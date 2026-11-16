@@ -40,7 +40,7 @@ FROM ubuntu:24.04 AS package
     RUN apt-get update && \
         DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             devscripts dpkg-dev build-essential fakeroot debhelper \
-            rpm m4 curl ca-certificates gnupg symlinks && \
+            rpm m4 curl ca-certificates gnupg symlinks patch appstream && \
         curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
         apt-get install -y nodejs && \
         npm install -g @yao-pkg/pkg && \
@@ -56,11 +56,24 @@ FROM ubuntu:24.04 AS package
     COPY --from=brand-icons /[d]esktop-apps/package/ /desktop-editors-package/
     ###
 
+    ### Fork packaging (build/linux/package/fork.mk explains it)
+    # New files (deb postinst, AppStream metainfo, fork.mk) as an overlay,
+    # edits of upstream files as a patch: --fuzz=0 fails the build when the
+    # upstream files moved on, instead of patching the wrong place.
+    COPY build/linux/package/ /desktop-editors-package/
+    COPY build/linux/unitystack-package-signing.asc /desktop-editors-package/common/linux/unitystack.asc
+    COPY build/linux/package.patch /desktop-editors-package.patch
+    RUN cd /desktop-editors-package && \
+        patch -p1 --forward --fuzz=0 < /desktop-editors-package.patch
+    ###
+
+    # fork.mk adds its prerequisites to the upstream deb/rpm/build targets
+    # (and validates the AppStream metainfo with appstreamcli).
     RUN cd desktop-editors-package && \
         mkdir -p ${OUT_BASE} && \
         ln -s ${BUNDLE_BASE} ${OUT_BASE}/linux_64  && \
         ln -s ${BUNDLE_BASE} ${OUT_BASE}/linux_arm64 && \
-        make deb rpm tar \
+        make -f Makefile -f fork.mk deb rpm tar \
             BRANDING_DIR="." \
             BUILD_OUTPUT_DIR="${OUT_BASE}" \
             PRODUCT_VERSION="${PRODUCT_VERSION}" \

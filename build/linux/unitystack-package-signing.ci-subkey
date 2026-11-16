@@ -1,0 +1,6 @@
+# The signing subkey of unitystack-package-signing.asc whose secret CI holds
+# (LINUX_GPG_PRIVATE_KEY). The jobs that sign fail if the secret is another
+# subkey (the spare's secret stays offline), and the checks of the public key
+# name it as CI's. Change it in the same commit as the key when CI moves to
+# the spare (build/linux/README.md, "If the CI secret leaks").
+E94F09292FC46A1BB63A50E4A4A6410F8A26DCC6
