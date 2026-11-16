@@ -15,9 +15,11 @@ FROM scratch AS desktop-common
     COPY --from=desktop-js /app/loginpage/deploy/noconnect.html /editors/webext/noconnect.html
 
     COPY desktop-apps/common/converter/* /converter/
-    # Support only Nextcloud and openWorkspace for now
+    # Support only Nextcloud, openWorkspace and OpenCloud for now. OpenCloud comes from
+    # build/providers, not from desktop-apps' providers/opencloud: it needs the bridge's editorPage.
     COPY desktop-apps/common/loginpage/providers/nextcloud /providers/nextcloud
     COPY build/providers/openworkspace /providers/openworkspace
+    COPY build/providers/opencloud /providers/opencloud
     COPY desktop-apps/common/templates /converter/templates
 
     COPY desktop-sdk/ChromiumBasedEditors/resources/ /editors/sdkjs/common/Images/

@@ -1,0 +1,31 @@
+{
+    "provider": "opencloud",
+    "name": "OpenCloud",
+    "check": {
+        "url": "/status.php"
+    },
+    "editorPage": "regex:/desktop-bridge/apps/eurooffice/|/external-[a-z0-9-]+",
+    "startPage": "/?desktop-provider=opencloud",
+    "order": 3,
+    "connectHint": {
+        "text": {
+            "en": "Requires the OpenCloud Desktop Bridge extension on the OpenCloud server.",
+            "de": "Benötigt die Erweiterung OpenCloud Desktop Bridge auf dem OpenCloud-Server."
+        },
+        "linkText": {
+            "en": "Get the extension",
+            "de": "Erweiterung holen"
+        },
+        "url": "https://git.unitystack.org/UnityStack/opencloud-desktop-bridge"
+    },
+    "icons": {
+        "themeLight": {
+            "connectionsList": "./assets/listicon.svg",
+            "buttonLogo": "./assets/buttonlogo.svg"
+        },
+        "themeDark": {
+            "connectionsList": "./assets/listicon_dark.svg",
+            "buttonLogo": "./assets/buttonlogo_dark.svg"
+        }
+    }
+}
