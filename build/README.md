@@ -112,6 +112,26 @@ and `dev.1`. They can be overridden locally:
 | `BUILD_NUMBER`                    | build identifier                         | `dev.1`                |
 | `COMPANY_NAME` / `PRODUCT_NAME`   | shown in the app's About page            | `Euro-Office` / `DesktopEditors` |
 
+### Cloud providers
+
+The start page lists the cloud providers it finds under `providers/<id>/` of the
+installed app. `build/.docker/desktop-composer.bake.Dockerfile` puts them into the
+shared `desktop-common` payload, so every platform ships the same set:
+
+| Provider | Source |
+| --- | --- |
+| `nextcloud` | `desktop-apps/common/loginpage/providers/nextcloud` |
+| `openworkspace` | `build/providers/openworkspace` |
+| `opencloud` | `build/providers/opencloud` (not desktop-apps' own `opencloud`, whose `editorPage` does not match the [OpenCloud Desktop Bridge](https://git.unitystack.org/UnityStack/opencloud-desktop-bridge) launcher) |
+
+A provider's `config.json` may carry a `connectHint` (`text` and `linkText` maps by
+language, plus an https `url`). The upstream start page has no such field, so the
+`desktop-js-unitystack` stage inlines `build/loginpage/provider-hint.js` into the
+start page built by `desktop-js`; it shows the hint in the **Connect to cloud**
+dialog. `build/loginpage/inject.js` does the inlining and fails the build if the
+start page no longer contains the markup the hint relies on. When that happens after
+a `desktop-apps` bump, adapt both files to the new dialog.
+
 ## Where to go next
 
 - Building on **[Linux](./linux/README.md)**
