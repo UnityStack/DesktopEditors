@@ -1,0 +1,19 @@
+OpenCloud provider: logo notice
+
+The path data in assets/buttonlogo.svg, assets/buttonlogo_dark.svg, assets/listicon.svg
+and assets/listicon_dark.svg comes from the OpenCloud logo:
+
+- services/web/assets/themes/opencloud/assets/logo.svg in
+  https://github.com/opencloud-eu/opencloud (commit 93fb9cbf6c), Apache License 2.0
+- common/loginpage/providers/opencloud/assets in
+  https://github.com/Euro-Office/desktop-apps (commit 5e84fcb25, "feat: add OpenCloud
+  connection provider"), which ships the same artwork
+
+The files here re-frame that artwork for the openWorkspace provider's canvas sizes and
+restore the "l" bar of the wordmark that the desktop-apps copy leaves out. The shapes are
+unchanged.
+
+OpenCloud and the OpenCloud logo are trademarks of their owner. They are used here only
+to name the servers this provider connects to. The Apache License 2.0 grants no rights to
+trade names or trademarks (section 6), and the CC BY-SA 4.0 notice that desktop-apps
+applies to its GUI assets does not cover this logo.
