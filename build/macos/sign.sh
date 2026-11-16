@@ -333,7 +333,18 @@ import_identity() {
         fail "Cannot import APPLE_DEVELOPER_ID_P12: wrong APPLE_DEVELOPER_ID_P12_PASSWORD, or not a .p12."
     fi
     rm -f "${p12}"
-    security import "${INTERMEDIATE_CA}" -k "${KEYCHAIN}" >/dev/null
+    # The trust evaluation needs Apple's intermediate. A .p12 exported with
+    # its chain already holds it, and then importing it again fails with
+    # errSecDuplicateItem, which only means it is there; any other error stops.
+    local out
+    if ! out="$(security import "${INTERMEDIATE_CA}" -k "${KEYCHAIN}" 2>&1)"; then
+        if ! grep -q 'already exists' <<<"${out}"; then
+            fail "Cannot import ${INTERMEDIATE_CA}: ${out}"
+        fi
+        echo "Apple's Developer ID G2 intermediate is already in the signing keychain."
+    fi
+    echo "Certificates in the signing keychain:"
+    security find-certificate -a "${KEYCHAIN}" | sed -n 's/^ *"labl"<blob>="\(.*\)"$/  \1/p'
     # Lets codesign use the key without a dialog.
     security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${kc_pass}" "${KEYCHAIN}" >/dev/null
 
