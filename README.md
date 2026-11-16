@@ -42,9 +42,10 @@ bridge's launcher (`/desktop-bridge/apps/eurooffice/` right after the host) open
 tab; other OpenCloud apps that open a new window go to the system browser. The Connect dialog
 shows the same hint with a link when you pick OpenCloud.
 
-With bridge 0.3.0 or later a host connected with OpenCloud is listed as OpenCloud. Bridge 0.2.0
-lists it as openWorkspace; it works the same. The app keeps the provider a host was first
-connected with; remove the entry and connect again to switch.
+Bridge 0.2.0, the current release, lists a host connected with OpenCloud as openWorkspace; it
+works the same. A later bridge release that includes the OpenCloud provider change lists it as
+OpenCloud. The app keeps the provider a host was first connected with; remove the entry and
+connect again to switch.
 
 The provider definitions live in [`build/providers/`](./build/providers) (openWorkspace,
 OpenCloud) and [`desktop-apps`](https://github.com/Euro-Office/desktop-apps/tree/main/common/loginpage/providers/nextcloud) (Nextcloud).
