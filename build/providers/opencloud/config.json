@@ -9,12 +9,12 @@
     "order": 3,
     "connectHint": {
         "text": {
-            "en": "Requires the OpenCloud Desktop Bridge extension on the OpenCloud server.",
-            "de": "Benötigt die Erweiterung OpenCloud Desktop Bridge auf dem OpenCloud-Server."
+            "en": "Your OpenCloud server needs the OpenCloud Desktop Bridge extension. Ask your administrator to install it.",
+            "de": "Ihr OpenCloud-Server benötigt die Erweiterung „OpenCloud Desktop Bridge“. Bitten Sie Ihre Administration, sie zu installieren."
         },
         "linkText": {
-            "en": "Get the extension",
-            "de": "Erweiterung holen"
+            "en": "About the extension",
+            "de": "Mehr zur Erweiterung"
         },
         "url": "https://git.unitystack.org/UnityStack/opencloud-desktop-bridge"
     },
