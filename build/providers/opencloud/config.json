@@ -4,7 +4,7 @@
     "check": {
         "url": "/status.php"
     },
-    "editorPage": "regex:/desktop-bridge/apps/eurooffice/|/external-[a-z0-9-]+",
+    "editorPage": "regex:^https?://[^/?#]+/desktop-bridge/apps/eurooffice/",
     "startPage": "/?desktop-provider=opencloud",
     "order": 3,
     "connectHint": {

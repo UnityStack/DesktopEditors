@@ -35,8 +35,11 @@ The suite empowers you to create, edit, save, and export text documents, spreads
 | **OpenCloud** | The [OpenCloud Desktop Bridge][bridge] extension installed on the OpenCloud server, as a web app under `WEB_ASSET_APPS_PATH`. |
 
 OpenCloud opens office files in a way the desktop app cannot see, so a plain OpenCloud server
-connects but never opens a document in an editor tab. The OpenCloud Desktop Bridge adds
-**Open in Euro-Office desktop** and opens documents in native editor tabs. The Connect dialog
+connects but never opens a document in an editor tab, and the app does not keep it in the
+Clouds list after a restart. The OpenCloud Desktop Bridge adds **Open in Euro-Office desktop**,
+opens documents in native editor tabs and registers the host in the Clouds list. Only the
+bridge's launcher (`/desktop-bridge/apps/eurooffice/` right after the host) opens as an editor
+tab; other OpenCloud apps that open a new window go to the system browser. The Connect dialog
 shows the same hint with a link when you pick OpenCloud.
 
 With bridge 0.3.0 or later a host connected with OpenCloud is listed as OpenCloud. Bridge 0.2.0

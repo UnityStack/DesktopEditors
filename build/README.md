@@ -124,6 +124,12 @@ shared `desktop-common` payload, so every platform ships the same set:
 | `openworkspace` | `build/providers/openworkspace` |
 | `opencloud` | `build/providers/opencloud` (not desktop-apps' own `opencloud`, whose `editorPage` does not match the [OpenCloud Desktop Bridge](https://git.unitystack.org/UnityStack/opencloud-desktop-bridge) launcher) |
 
+The `opencloud` provider's `editorPage` (`regex:^https?://[^/?#]+/desktop-bridge/apps/eurooffice/`)
+is anchored to the start of the path on purpose: an unanchored pattern also matches host names
+such as `external-cloud.example.com`, and then every navigation in the portal tab turns into an
+editor tab. The bridge's unit tests hold a copy of this `editorPage` and of the
+`/?desktop-provider=opencloud` `startPage`, so change them in both repositories together.
+
 A provider's `config.json` may carry a `connectHint` (`text` and `linkText` maps by
 language, plus an https `url`). The upstream start page has no such field, so the
 `desktop-js-unitystack` stage inlines `build/loginpage/provider-hint.js` into the
