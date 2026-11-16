@@ -1,0 +1,41 @@
+Package: euro-office-euro-office-help
+Architecture: all
+Version: 9.3.6-0~ce~rc.2
+Priority: optional
+Section: editors
+Source: euro-office-euro-office
+Maintainer: UnityStack GmbH <packages@unitystack.eu>
+Installed-Size: 186178
+Pre-Depends: dpkg (>= 1.14.0)
+Depends: euro-office-euro-office
+Enhances: euro-office-euro-office
+Filename: pool/v9.3.6-ce.rc.2/euro-office-euro-office-help_9.3.6-0.ce.rc.2_all.deb
+Size: 103835684
+SHA256: 8b4a9d532a649a19a4d75353c5acb61ffacf6374cf8d68e3bafbe25b98517318
+SHA512: 97111e5b6bba4d533703676bd887c2dac2549460341f12f0cca8de6068ae3cb830795d4ce6a5e5bf46ecd9f9043c8ad334bc4ca5a86f137ab8a493f34694a639
+Homepage: https://euro-office.org
+Description: offline help for Euro-Office Euro-Office
+ This package contains offline help files.
+
+Package: euro-office-euro-office
+Architecture: arm64
+Version: 9.3.6-0~ce~rc.2
+Priority: optional
+Section: editors
+Maintainer: UnityStack GmbH <packages@unitystack.eu>
+Installed-Size: 1414257
+Provides: euro-office-euro-office
+Pre-Depends: dpkg (>= 1.14.0)
+Depends: x11-common, libasound2, curl | wget, desktop-file-utils, gstreamer1.0-libav, gstreamer1.0-plugins-ugly, libxss1, libatk1.0-0, libgtk-3-0, libcairo2, libstdc++6 (>= 4.8), libxkbcommon-x11-0, libxcb-cursor0, libnotify4, fonts-dejavu | ttf-dejavu, fonts-liberation, fonts-crosextra-carlito, xdg-utils, libpulse0, libopengl0, libnss3
+Recommends: ttf-mscorefonts-installer, fonts-takao-gothic
+Suggests: euro-office-euro-office-help
+Conflicts: euro-office-euro-office-enterprise
+Filename: pool/v9.3.6-ce.rc.2/euro-office-euro-office_9.3.6-0.ce.rc.2_arm64.deb
+Size: 318799256
+SHA256: 512258849957a80401de8f314117e3e02e56350ec00d667fd5825e10b693da8a
+SHA512: bb1689669685960ffb8ae04f6b31c86bb3f1dcf1f567456918991ba91e48edb15a48d340eae4551487e544c71e639bd79608dd2bbf42aed8f55184c33f034efa
+Homepage: https://euro-office.org
+Description: Desktop editors for text docs, spreadsheets, presentations, PDFs, and PDF forms.
+ Open-source office suite pack that comprises all the tools you need to
+ work offline with documents, spreadsheets, presentations, PDFs, and PDF forms.
+

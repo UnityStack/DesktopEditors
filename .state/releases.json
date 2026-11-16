@@ -1,0 +1,12 @@
+{
+  "releases": [
+    {
+      "tag": "v9.3.6-ce.rc.2",
+      "channel": "prerelease",
+      "version": "9.3.6-0~ce~rc.2",
+      "date": "2026-11-16",
+      "apt": true,
+      "rpm": true
+    }
+  ]
+}

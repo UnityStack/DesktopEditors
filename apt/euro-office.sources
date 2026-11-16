@@ -1,0 +1,10 @@
+# Euro-Office Community Edition (unofficial build by UnityStack GmbH), stable channel.
+# Install as /etc/apt/sources.list.d/euro-office.sources together with the key
+# https://packages.unitystack.eu/keys/unitystack.asc in /usr/share/keyrings/unitystack.asc.
+# Key fingerprint: 62E16713F4459962B0202B01038AB9E63A2B29ED
+Types: deb
+URIs: https://packages.unitystack.eu/euro-office/apt
+Suites: stable
+Components: main
+Architectures: amd64 arm64
+Signed-By: /usr/share/keyrings/unitystack.asc

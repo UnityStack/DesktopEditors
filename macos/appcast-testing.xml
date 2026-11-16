@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Euro-Office Community Edition testing (UnityStack GmbH)</title>
+    <link>https://packages.unitystack.eu/euro-office/macos/appcast-testing.xml</link>
+    <description>Updates of Euro-Office Community Edition for macOS, built and signed by UnityStack GmbH.</description>
+    <language>en</language>
+    <item>
+      <title>Euro-Office 9.3.6-ce.rc.2</title>
+      <link>https://github.com/UnityStack/DesktopEditors/releases/tag/v9.3.6-ce.rc.2</link>
+      <sparkle:version>903063002</sparkle:version>
+      <sparkle:shortVersionString>9.3.6</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>11.0</sparkle:minimumSystemVersion>
+      <pubDate>Mon, 16 Nov 2026 07:35:56 +0000</pubDate>
+      <description><![CDATA[<p>Community Edition by UnityStack GmbH, release candidate 2.</p>
+<h3>Features</h3>
+<ul>
+<li>macOS: the DMG is signed with UnityStack's Developer ID and notarized by Apple, so it opens without a Gatekeeper warning.</li>
+<li>macOS: automatic updates with Sparkle. Release candidates follow the testing feed, final releases the stable feed, both at <a href="https://packages.unitystack.eu/euro-office/macos/" rel="nofollow">https://packages.unitystack.eu/euro-office/macos/</a>. rc.1 has no update feed: install this build once by hand.</li>
+<li>Linux: signed apt, dnf and zypper repositories at <a href="https://packages.unitystack.eu/euro-office/" rel="nofollow">https://packages.unitystack.eu/euro-office/</a>, with the signing key at <a href="https://packages.unitystack.eu/keys/unitystack.asc" rel="nofollow">https://packages.unitystack.eu/keys/unitystack.asc</a>. See build/linux/README.md for the setup.</li>
+</ul>
+<h3>Changes</h3>
+<ul>
+<li>macOS builds run on GitHub's macos-15 runners; the macos-14 images are retired.</li>
+<li>macOS releases are built only for <code>-ce</code> tags.</li>
+</ul>
+<p>Built from <a class="commit-link" data-hovercard-type="commit" data-hovercard-url="https://github.com/UnityStack/DesktopEditors/commit/c3aec8ccc2b127ca746ea668db137ad0318a0ea9/hovercard" href="https://github.com/UnityStack/DesktopEditors/commit/c3aec8ccc2b127ca746ea668db137ad0318a0ea9"><tt>c3aec8c</tt></a>, <a href="https://github.com/UnityStack/DesktopEditors/actions/runs/43813221459">https://github.com/UnityStack/DesktopEditors/actions/runs/43813221459</a></p>]]></description>
+      <enclosure url="https://github.com/UnityStack/DesktopEditors/releases/download/v9.3.6-ce.rc.2/Euro-Office-DesktopEditors-9.3.6-0.ce.rc.2-macos-arm64.dmg" length="707976758" type="application/octet-stream" sparkle:edSignature="+o1WKCrbtHwTDnS5OZRk+oB7SQpUTBwU4d7TkX8Kf/I5I2mqtyKhw2A2JAq/FKYP5jwy/l5qctdLiHIQs64tAQ=="/>
+    </item>
+  </channel>
+</rss>

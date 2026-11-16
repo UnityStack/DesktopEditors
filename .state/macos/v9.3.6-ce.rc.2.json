@@ -1,0 +1,19 @@
+{
+  "asset": "Euro-Office-DesktopEditors-9.3.6-0.ce.rc.2-macos-arm64.dmg",
+  "bundle_id": "asc.euro-office.Euro-Office",
+  "channel": "prerelease",
+  "ed_signature": "+o1WKCrbtHwTDnS5OZRk+oB7SQpUTBwU4d7TkX8Kf/I5I2mqtyKhw2A2JAq/FKYP5jwy/l5qctdLiHIQs64tAQ==",
+  "feed_url": "https://packages.unitystack.eu/euro-office/macos/appcast-testing.xml",
+  "format": 1,
+  "length": 707976758,
+  "minimum_system_version": "11.0",
+  "notes_html": "<p>Community Edition by UnityStack GmbH, release candidate 2.</p>\n<h3>Features</h3>\n<ul>\n<li>macOS: the DMG is signed with UnityStack's Developer ID and notarized by Apple, so it opens without a Gatekeeper warning.</li>\n<li>macOS: automatic updates with Sparkle. Release candidates follow the testing feed, final releases the stable feed, both at <a href=\"https://packages.unitystack.eu/euro-office/macos/\" rel=\"nofollow\">https://packages.unitystack.eu/euro-office/macos/</a>. rc.1 has no update feed: install this build once by hand.</li>\n<li>Linux: signed apt, dnf and zypper repositories at <a href=\"https://packages.unitystack.eu/euro-office/\" rel=\"nofollow\">https://packages.unitystack.eu/euro-office/</a>, with the signing key at <a href=\"https://packages.unitystack.eu/keys/unitystack.asc\" rel=\"nofollow\">https://packages.unitystack.eu/keys/unitystack.asc</a>. See build/linux/README.md for the setup.</li>\n</ul>\n<h3>Changes</h3>\n<ul>\n<li>macOS builds run on GitHub's macos-15 runners; the macos-14 images are retired.</li>\n<li>macOS releases are built only for <code>-ce</code> tags.</li>\n</ul>\n<p>Built from <a class=\"commit-link\" data-hovercard-type=\"commit\" data-hovercard-url=\"https://github.com/UnityStack/DesktopEditors/commit/c3aec8ccc2b127ca746ea668db137ad0318a0ea9/hovercard\" href=\"https://github.com/UnityStack/DesktopEditors/commit/c3aec8ccc2b127ca746ea668db137ad0318a0ea9\"><tt>c3aec8c</tt></a>, <a href=\"https://github.com/UnityStack/DesktopEditors/actions/runs/43813221459\">https://github.com/UnityStack/DesktopEditors/actions/runs/43813221459</a></p>",
+  "public_key": "1UxSz1NTPwqGupGzy53az+6BrIWWkL6WpqruPMC3cnY=",
+  "published": 1794814556,
+  "release_url": "https://github.com/UnityStack/DesktopEditors/releases/tag/v9.3.6-ce.rc.2",
+  "sha256": "75de77c90fb647d1437f73f47c950b46c8198dff2a057b9f7fbbb870c0f557e0",
+  "short_version": "9.3.6",
+  "tag": "v9.3.6-ce.rc.2",
+  "url": "https://github.com/UnityStack/DesktopEditors/releases/download/v9.3.6-ce.rc.2/Euro-Office-DesktopEditors-9.3.6-0.ce.rc.2-macos-arm64.dmg",
+  "version": "903063002"
+}
