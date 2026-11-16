@@ -3,7 +3,7 @@
 # GitHub release of UnityStack/DesktopEditors, in the layout of
 # microsoft/winget-pkgs:
 #
-#   render-manifests.sh --tag v9.3.6-ce --out <dir> \
+#   render-manifests.sh --tag v9.3.8-ce --out <dir> \
 #                       [--release-json <file>] [--sums-dir <dir>] [--allow-prerelease]
 #
 # writes <dir>/manifests/u/UnityStack/EuroOfficeCommunityEdition/<version>/

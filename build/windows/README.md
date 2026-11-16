@@ -306,6 +306,53 @@ If a submitted installer has to change anyway:
   *Update version* pull request for the existing version. Say in the pull
   request why the hash changed.
 
+### Note for the winget moderators
+
+winget-pkgs already has `EuroOffice.DesktopEditors`, which installs the Euro-Office
+project's own build, and both builds write the same *Apps & features* entry. The validation
+bot will probably not flag the first pull request: it adds `Possible-Duplicate` only when
+another pull request targets the same manifest path or an `InstallerSha256` is already in the
+repository, and the signed installers have hashes of their own. A moderator may still ask
+whether the package duplicates `EuroOffice.DesktopEditors`, or label it
+`Policy-Test-2.2` (trademarks) because of the name. Then post this comment (check the facts,
+including the upstream version number, against the current upstream release first):
+
+```markdown
+This is not a duplicate of `EuroOffice.DesktopEditors`. It is a separate,
+signed build of the same open-source code, published under its own
+identifier and publisher name:
+
+- **Publisher:** UnityStack GmbH, not affiliated with the Euro-Office project.
+  The description says so, and the identifier's publisher segment is
+  `UnityStack`, not `EuroOffice`.
+- **Signed installers:** both installers carry an Authenticode signature of
+  UnityStack GmbH (Azure Artifact Signing). The Euro-Office project's
+  installers in `EuroOffice.DesktopEditors` (9.3.8.0) carry none, so UAC
+  shows an unknown publisher for them.
+- **Same install entry:** both builds use the unchanged Inno script of
+  `desktop-apps`, so they write the same *Apps & features* entry
+  (`Euro-Office Desktop Editors_is1`, publisher `Euro-Office`), and
+  `AppsAndFeaturesEntries` lists it as the installer writes it. Installing
+  one build replaces the other. That is intended: users choose which
+  publisher they install from.
+- **Releases and support:**
+  https://github.com/UnityStack/DesktopEditors/releases and
+  https://github.com/UnityStack/DesktopEditors/issues
+```
+
+The facts behind it, as of upstream v9.3.8 (checked 2026-11-16): the security directory of
+both upstream installers is empty (no Authenticode signature), and upstream's `build.yml`
+builds the `euro-office` brand with `sign: false`. Upstream signs only its Nextcloud Office
+brand (Authenticode, Nextcloud GmbH), released at `nextcloud-releases/Office-DesktopEditors`
+under its own product code, `Nextcloud Office Desktop Editors_is1`; its winget package
+`Nextcloud.Office` was still an open pull request (microsoft/winget-pkgs#480016) on
+2026-11-16. Check the security directory again for the release you submit against, for
+example with `Get-AuthenticodeSignature` on Windows.
+
+winget-pkgs also checks that the installer URLs can be reached from the publisher's website
+(*URL Domain Validation*). `PackageUrl` points at this repository, which helps; a link from
+<https://unitystack.eu> to this repository or its releases makes it certain.
+
 ### One-time setup
 
 1. **A GitHub account for the pull requests**, ideally a machine account
@@ -336,16 +383,17 @@ tag with *dry run*, check the manifests in the artifact, then run it again
 without. To do the same locally:
 
 ```bash
-build/windows/winget/render-manifests.sh --tag v9.3.6-ce --out winget-out
-# prints winget-out/manifests/u/UnityStack/EuroOfficeCommunityEdition/9.3.6.0
+build/windows/winget/render-manifests.sh --tag v9.3.8-ce --out winget-out
+# prints winget-out/manifests/u/UnityStack/EuroOfficeCommunityEdition/9.3.8.0
 ```
 
 On Windows, `winget validate --manifest <that directory>` checks the
 manifests and, after `winget settings --enable LocalManifestFiles`,
 `winget install --manifest <that directory>` installs from them (best in
 Windows Sandbox). `komac submit <that directory>` (or `wingetcreate submit`)
-opens the pull request with the account's token. Answer the moderators on the
-pull request; later versions need no manual step.
+opens the pull request with the account's token. Post the
+[note for the winget moderators](#note-for-the-winget-moderators) on the first
+pull request and answer their questions; later versions need no manual step.
 
 ## Good to know
 
