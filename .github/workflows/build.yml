@@ -718,6 +718,8 @@ jobs:
       # ---- build + package (single source of truth: the script) ---- #
       - name: Build & package
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $extra = @{}
           if ($env:SIGN_BUNDLE -eq 'true') {
