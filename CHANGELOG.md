@@ -7,8 +7,8 @@ Community Edition by UnityStack GmbH, release candidate 2.
 ### Features
 
 * macOS: the DMG is signed with UnityStack's Developer ID and notarized by Apple, so it opens without a Gatekeeper warning.
-* macOS: automatic updates with Sparkle. Release candidates follow the testing feed, final releases the stable feed, both at https://packages.unitystack.eu/euro-office/macos/. rc.1 has no update feed: install this build once by hand.
-* Linux: signed apt, dnf and zypper repositories at https://packages.unitystack.eu/euro-office/, with the signing key at https://packages.unitystack.eu/keys/unitystack.asc. See build/linux/README.md for the setup.
+* macOS: automatic updates with Sparkle. Release candidates follow the testing feed, final releases the stable feed, both at <https://packages.unitystack.eu/euro-office/macos/>. rc.1 has no update feed: install this build once by hand.
+* Linux: signed apt, dnf and zypper repositories at <https://packages.unitystack.eu/euro-office/>, with the signing key at <https://packages.unitystack.eu/keys/unitystack.asc>. See build/linux/README.md for the setup.
 
 ### Changes
 
