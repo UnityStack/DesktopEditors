@@ -1,0 +1,170 @@
+name: Publish to WinGet (Community Edition)
+
+# Opens a pull request on microsoft/winget-pkgs for each final Community
+# Edition release (vX.Y.Z-ce): UnityStack.EuroOfficeCommunityEdition version
+# X.Y.Z.0. Release candidates and rebuilds are skipped. See
+# build/windows/README.md, "Updates via winget".
+#
+# publish-release in build.yml creates the release with GITHUB_TOKEN, and
+# events caused by GITHUB_TOKEN start no workflows, so `release: released`
+# would never fire for it. This workflow runs when a tag build of build.yml
+# has finished instead, or by hand for one tag. winget.yml is upstream's
+# job (ONLYOFFICE.DesktopEditors) and stays limited to Euro-Office.
+on:
+  workflow_run:
+    workflows: ['Build (Windows/Linux/macOS)']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (vX.Y.Z-ce)
+        required: true
+        type: string
+      dry_run:
+        description: Only render the manifests (artifact), open no pull request
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Runs for one tag wait for each other, so the second sees the pull request of
+# the first. Keyed by tag (or branch): every build.yml run starts this
+# workflow, and in a shared group the next run would cancel a pending one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+env:
+  ID: UnityStack.EuroOfficeCommunityEdition
+  KOMAC_VERSION: 2.17.2
+  # sha256 of komac-2.17.2-x86_64-unknown-linux-gnu.tar.gz, as in the
+  # release's SHA256SUMS and asset digest.
+  KOMAC_SHA256: b03b020eec98acfb0b53e284a6e21815b884be33de6785b97e7a120f0e748966
+
+jobs:
+  # Decides without WINGET_TOKEN: the tag, its release and winget-pkgs.
+  # Tag builds started by a push or by Run workflow on the tag both count;
+  # the tag pattern, the release state and the winget-pkgs lookups below
+  # keep a version from going in twice.
+  check:
+    if: >-
+      github.repository == 'UnityStack/DesktopEditors' &&
+      (github.event_name == 'workflow_dispatch' ||
+       ((github.event.workflow_run.event == 'push' ||
+         github.event.workflow_run.event == 'workflow_dispatch') &&
+        github.event.workflow_run.conclusion == 'success' &&
+        startsWith(github.event.workflow_run.head_branch, 'v')))
+    runs-on: ubuntu-24.04
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+      tag: ${{ steps.check.outputs.tag }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # For a tag push, head_branch is the tag name.
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          skip() { echo "::notice::$TAG: $*, nothing to publish to winget"; echo "publish=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          if [[ "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-ce$ ]]; then
+            version=${BASH_REMATCH[1]}.0
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-ce\.[1-9][0-9]*$ ]]; then
+            echo "::warning::$TAG is a rebuild: its installer writes the same DisplayVersion as the final release, so winget cannot offer it as an update (see build/windows/README.md, \"Updates via winget\")"
+            skip "rebuild"
+          else
+            skip "not a final Community Edition tag (vX.Y.Z-ce)"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          # Only a missing release is a reason to skip. Any other error (rate
+          # limit, 5xx, network) fails the job, so a submission is not dropped
+          # without notice.
+          if ! state=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isDraft,isPrerelease \
+                         --jq 'if .isDraft then "draft" elif .isPrerelease then "prerelease" else "published" end' 2>&1); then
+            [[ "$state" == *"release not found"* ]] && skip "no release"
+            echo "::error::gh release view $TAG failed: $state"; exit 1
+          fi
+          case $state in
+            published) ;;
+            draft | prerelease) skip "the release is a $state" ;;
+            *) echo "::error::gh release view $TAG returned: $state"; exit 1 ;;
+          esac
+
+          # A version that is in winget-pkgs or has an open pull request is
+          # not submitted again (re-runs, a manual run after the automatic one).
+          first=${ID:0:1}
+          path=manifests/${first,,}/${ID%%.*}/${ID#*.}/$version
+          if out=$(gh api "repos/microsoft/winget-pkgs/contents/$path" --silent 2>&1); then
+            skip "$ID $version is already in microsoft/winget-pkgs"
+          elif [[ "$out" != *"HTTP 404"* ]]; then
+            echo "::error::looking up $path in microsoft/winget-pkgs failed: $out"; exit 1
+          fi
+          # The search index lags behind by a minute or so; the newest pull
+          # requests cover that gap.
+          open=$(gh api -X GET search/issues \
+                   -f q="repo:microsoft/winget-pkgs is:pr is:open in:title \"$ID\" \"$version\"" --jq .total_count)
+          recent=$(gh api 'repos/microsoft/winget-pkgs/pulls?state=open&sort=created&direction=desc&per_page=100' \
+                     --jq "[.[] | select(.title | contains(\"$ID\") and contains(\"$version\"))] | length")
+          [ "$open" = 0 ] && [ "$recent" = 0 ] \
+            || skip "microsoft/winget-pkgs has an open pull request for $ID $version"
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: check
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    # Holds WINGET_TOKEN. Deployment branches: main only (workflow_run jobs
+    # run on the default branch).
+    environment: winget
+    env:
+      TAG: ${{ needs.check.outputs.tag }}
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      # The script and templates of the default branch, not of the tag.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          sparse-checkout: build/windows/winget
+          persist-credentials: false
+
+      - name: Install komac
+        run: |
+          set -euo pipefail
+          tarball=komac-$KOMAC_VERSION-x86_64-unknown-linux-gnu.tar.gz
+          curl -fsSLO "https://github.com/russellbanks/Komac/releases/download/v$KOMAC_VERSION/$tarball"
+          echo "$KOMAC_SHA256  $tarball" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/komac"
+          tar -xzf "$tarball" -C "$RUNNER_TEMP/komac" komac
+          echo "$RUNNER_TEMP/komac" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/komac/komac" --version
+
+      - name: Render the manifests
+        id: render
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          dir=$(build/windows/winget/render-manifests.sh --tag "$TAG" --out winget | tail -n 1)
+          [ "$(basename "$dir")" = "$VERSION" ] || { echo "::error::rendered $dir, expected version $VERSION"; exit 1; }
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          for f in "$dir"/*.yaml; do echo "── $f"; cat "$f"; done
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: winget-manifests-${{ needs.check.outputs.version }}
+          path: winget/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Open the pull request on microsoft/winget-pkgs
+        if: ${{ !inputs.dry_run }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          DIR: ${{ steps.render.outputs.dir }}
+        run: |
+          set -euo pipefail
+          [ -n "$GITHUB_TOKEN" ] || { echo "::error::WINGET_TOKEN is not set in the winget environment"; exit 1; }
+          komac submit --yes "$DIR"
