@@ -1,0 +1,83 @@
+Package: euro-office-euro-office
+Architecture: arm64
+Version: 9.3.8-0~ce
+Priority: optional
+Section: editors
+Maintainer: UnityStack GmbH <packages@unitystack.eu>
+Installed-Size: 1414290
+Provides: euro-office-euro-office
+Pre-Depends: dpkg (>= 1.14.0)
+Depends: x11-common, libasound2, curl | wget, desktop-file-utils, gstreamer1.0-libav, gstreamer1.0-plugins-ugly, libxss1, libatk1.0-0, libgtk-3-0, libcairo2, libstdc++6 (>= 4.8), libxkbcommon-x11-0, libxcb-cursor0, libnotify4, fonts-dejavu | ttf-dejavu, fonts-liberation, fonts-crosextra-carlito, xdg-utils, libpulse0, libopengl0, libnss3
+Recommends: ttf-mscorefonts-installer, fonts-takao-gothic
+Conflicts: euro-office-euro-office-enterprise
+Filename: pool/v9.3.8-ce/euro-office-euro-office_9.3.8-0.ce_arm64.deb
+Size: 318803968
+SHA256: 28a0a7f3c94ee0788c895a3e38b20d74a6b2cfe6b111cec44bb386d0e81d1c80
+SHA512: 6cd0a807746284c3f793348de4e625e2d735d67c47fdd799f25f597d5e3c71517f924cdc7ee7f287f679301b0b6a03a79273827f83254c1c6a54f521145aa34d
+Homepage: https://euro-office.org
+Description: Desktop editors for text docs, spreadsheets, presentations, PDFs, and PDF forms.
+ Open-source office suite pack that comprises all the tools you need to
+ work offline with documents, spreadsheets, presentations, PDFs, and PDF forms.
+
+Package: euro-office-euro-office
+Architecture: arm64
+Version: 9.3.8-0~ce~rc.1
+Priority: optional
+Section: editors
+Maintainer: UnityStack GmbH <packages@unitystack.eu>
+Installed-Size: 1414223
+Provides: euro-office-euro-office
+Pre-Depends: dpkg (>= 1.14.0)
+Depends: x11-common, libasound2, curl | wget, desktop-file-utils, gstreamer1.0-libav, gstreamer1.0-plugins-ugly, libxss1, libatk1.0-0, libgtk-3-0, libcairo2, libstdc++6 (>= 4.8), libxkbcommon-x11-0, libxcb-cursor0, libnotify4, fonts-dejavu | ttf-dejavu, fonts-liberation, fonts-crosextra-carlito, xdg-utils, libpulse0, libopengl0, libnss3
+Recommends: ttf-mscorefonts-installer, fonts-takao-gothic
+Conflicts: euro-office-euro-office-enterprise
+Filename: pool/v9.3.8-ce.rc.1/euro-office-euro-office_9.3.8-0.ce.rc.1_arm64.deb
+Size: 318831596
+SHA256: 4bda1dcde30133c1883ab52e9d37111aa1081a1ecef3d56116115342467be409
+SHA512: b8d475ceaa73518ba69e19ed9f46afbd37b7590323ce4d5d3b6e939110c9a295ac747d3df875bb7bcf2d0c2da2184bd24455b34388f85c19b938f11871aa284e
+Homepage: https://euro-office.org
+Description: Desktop editors for text docs, spreadsheets, presentations, PDFs, and PDF forms.
+ Open-source office suite pack that comprises all the tools you need to
+ work offline with documents, spreadsheets, presentations, PDFs, and PDF forms.
+
+Package: euro-office-euro-office-help
+Architecture: all
+Version: 9.3.6-0~ce~rc.2
+Priority: optional
+Section: editors
+Source: euro-office-euro-office
+Maintainer: UnityStack GmbH <packages@unitystack.eu>
+Installed-Size: 186178
+Pre-Depends: dpkg (>= 1.14.0)
+Depends: euro-office-euro-office
+Enhances: euro-office-euro-office
+Filename: pool/v9.3.6-ce.rc.2/euro-office-euro-office-help_9.3.6-0.ce.rc.2_all.deb
+Size: 103835684
+SHA256: 8b4a9d532a649a19a4d75353c5acb61ffacf6374cf8d68e3bafbe25b98517318
+SHA512: 97111e5b6bba4d533703676bd887c2dac2549460341f12f0cca8de6068ae3cb830795d4ce6a5e5bf46ecd9f9043c8ad334bc4ca5a86f137ab8a493f34694a639
+Homepage: https://euro-office.org
+Description: offline help for Euro-Office Euro-Office
+ This package contains offline help files.
+
+Package: euro-office-euro-office
+Architecture: arm64
+Version: 9.3.6-0~ce~rc.2
+Priority: optional
+Section: editors
+Maintainer: UnityStack GmbH <packages@unitystack.eu>
+Installed-Size: 1414257
+Provides: euro-office-euro-office
+Pre-Depends: dpkg (>= 1.14.0)
+Depends: x11-common, libasound2, curl | wget, desktop-file-utils, gstreamer1.0-libav, gstreamer1.0-plugins-ugly, libxss1, libatk1.0-0, libgtk-3-0, libcairo2, libstdc++6 (>= 4.8), libxkbcommon-x11-0, libxcb-cursor0, libnotify4, fonts-dejavu | ttf-dejavu, fonts-liberation, fonts-crosextra-carlito, xdg-utils, libpulse0, libopengl0, libnss3
+Recommends: ttf-mscorefonts-installer, fonts-takao-gothic
+Suggests: euro-office-euro-office-help
+Conflicts: euro-office-euro-office-enterprise
+Filename: pool/v9.3.6-ce.rc.2/euro-office-euro-office_9.3.6-0.ce.rc.2_arm64.deb
+Size: 318799256
+SHA256: 512258849957a80401de8f314117e3e02e56350ec00d667fd5825e10b693da8a
+SHA512: bb1689669685960ffb8ae04f6b31c86bb3f1dcf1f567456918991ba91e48edb15a48d340eae4551487e544c71e639bd79608dd2bbf42aed8f55184c33f034efa
+Homepage: https://euro-office.org
+Description: Desktop editors for text docs, spreadsheets, presentations, PDFs, and PDF forms.
+ Open-source office suite pack that comprises all the tools you need to
+ work offline with documents, spreadsheets, presentations, PDFs, and PDF forms.
+

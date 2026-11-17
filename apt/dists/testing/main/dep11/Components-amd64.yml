@@ -47,7 +47,7 @@ Icon:
     height: 256
 Releases:
 - version: "9.3.8"
-  type: "development"
-  unix-timestamp: 1794787200
+  type: "stable"
+  unix-timestamp: 1794873600
 ContentRating:
   oars-1.1: {}

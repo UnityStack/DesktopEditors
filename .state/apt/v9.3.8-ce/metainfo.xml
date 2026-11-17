@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Rendered and checked with "appstreamcli validate" by build/linux/package/fork.mk. -->
+<!-- build/linux/repo/dep11.py turns it into the apt repository's DEP-11 catalog. -->
+<component type="desktop-application">
+  <id>org.euro_office.desktopeditors</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <!-- As the License fields of the deb and rpm (desktop-apps/package). -->
+  <project_license>AGPL-3.0-only AND CC-BY-SA-4.0</project_license>
+
+  <name>Euro-Office</name>
+  <summary>Edit documents, spreadsheets, presentations and PDFs</summary>
+  <description>
+    <p>
+      Euro-Office is an office suite for text documents, spreadsheets, presentations,
+      PDFs and PDF forms. It opens and saves Microsoft Office and OpenDocument files
+      and works offline.
+    </p>
+    <p>
+      This is the unofficial Community Edition, built and signed by UnityStack GmbH.
+      It is not affiliated with the Euro-Office project.
+    </p>
+  </description>
+
+  <!-- developer_name is what the Ubuntu App Center reads, developer is the AppStream 1.0 form -->
+  <developer_name>UnityStack GmbH</developer_name>
+  <developer id="eu.unitystack">
+    <name>UnityStack GmbH</name>
+  </developer>
+  <update_contact>packages@unitystack.eu</update_contact>
+
+  <url type="homepage">https://euro-office.org</url>
+  <url type="bugtracker">https://github.com/UnityStack/DesktopEditors/issues</url>
+  <url type="vcs-browser">https://github.com/UnityStack/DesktopEditors</url>
+
+  <launchable type="desktop-id">euro-office-euro-office.desktop</launchable>
+  <icon type="stock">euro-office-euro-office</icon>
+  <categories>
+    <category>Office</category>
+  </categories>
+  <provides>
+    <binary>euro-office-euro-office</binary>
+    <binary>desktopeditors</binary>
+  </provides>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="9.3.8" date="2026-11-17" type="stable"/>
+  </releases>
+</component>

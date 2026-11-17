@@ -6,6 +6,23 @@
     <description>Updates of Euro-Office Community Edition for macOS, built and signed by UnityStack GmbH.</description>
     <language>en</language>
     <item>
+      <title>Euro-Office 9.3.8-ce</title>
+      <link>https://github.com/UnityStack/DesktopEditors/releases/tag/v9.3.8-ce</link>
+      <sparkle:version>903085000</sparkle:version>
+      <sparkle:shortVersionString>9.3.8</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>11.0</sparkle:minimumSystemVersion>
+      <pubDate>Tue, 17 Nov 2026 03:48:37 +0000</pubDate>
+      <description><![CDATA[<p>Community Edition by UnityStack GmbH, based on upstream Euro-Office v9.3.8. It contains everything in v9.3.8-ce.rc.1, plus the changes below.</p>
+<h3>Changes</h3>
+<ul>
+<li>Cloud providers: OpenCloud next to openWorkspace and Nextcloud. Picking it in the Connect dialog shows a hint that the OpenCloud server needs the OpenCloud Desktop Bridge extension.</li>
+<li>Windows: the final release is published to winget as <code>UnityStack.EuroOfficeCommunityEdition</code>.</li>
+<li>README: a Community Edition section comparing it with upstream, and install instructions for this repository's signed builds and package repositories.</li>
+</ul>
+<p>Built from <a class="commit-link" data-hovercard-type="commit" data-hovercard-url="https://github.com/UnityStack/DesktopEditors/commit/25efb555c860b82a70fd680138edaef4b15384dd/hovercard" href="https://github.com/UnityStack/DesktopEditors/commit/25efb555c860b82a70fd680138edaef4b15384dd"><tt>25efb55</tt></a>, <a href="https://github.com/UnityStack/DesktopEditors/actions/runs/44001059989">https://github.com/UnityStack/DesktopEditors/actions/runs/44001059989</a></p>]]></description>
+      <enclosure url="https://github.com/UnityStack/DesktopEditors/releases/download/v9.3.8-ce/Euro-Office-DesktopEditors-9.3.8-0.ce-macos-arm64.dmg" length="707808837" type="application/octet-stream" sparkle:edSignature="lrZ9SAOJyS1pHEr79At0ZFF8la7ns4nLzYv2V9lfR0ywKk8fBhPHjC9ssiVQRSyUd6QiTmSHqrG5uc+4ogiaAA=="/>
+    </item>
+    <item>
       <title>Euro-Office 9.3.8-ce.rc.1</title>
       <link>https://github.com/UnityStack/DesktopEditors/releases/tag/v9.3.8-ce.rc.1</link>
       <sparkle:version>903083001</sparkle:version>

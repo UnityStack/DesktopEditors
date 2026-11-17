@@ -1,0 +1,19 @@
+{
+  "asset": "Euro-Office-DesktopEditors-9.3.8-0.ce-macos-arm64.dmg",
+  "bundle_id": "asc.euro-office.Euro-Office",
+  "channel": "stable",
+  "ed_signature": "lrZ9SAOJyS1pHEr79At0ZFF8la7ns4nLzYv2V9lfR0ywKk8fBhPHjC9ssiVQRSyUd6QiTmSHqrG5uc+4ogiaAA==",
+  "feed_url": "https://packages.unitystack.eu/euro-office/macos/appcast.xml",
+  "format": 1,
+  "length": 707808837,
+  "minimum_system_version": "11.0",
+  "notes_html": "<p>Community Edition by UnityStack GmbH, based on upstream Euro-Office v9.3.8. It contains everything in v9.3.8-ce.rc.1, plus the changes below.</p>\n<h3>Changes</h3>\n<ul>\n<li>Cloud providers: OpenCloud next to openWorkspace and Nextcloud. Picking it in the Connect dialog shows a hint that the OpenCloud server needs the OpenCloud Desktop Bridge extension.</li>\n<li>Windows: the final release is published to winget as <code>UnityStack.EuroOfficeCommunityEdition</code>.</li>\n<li>README: a Community Edition section comparing it with upstream, and install instructions for this repository's signed builds and package repositories.</li>\n</ul>\n<p>Built from <a class=\"commit-link\" data-hovercard-type=\"commit\" data-hovercard-url=\"https://github.com/UnityStack/DesktopEditors/commit/25efb555c860b82a70fd680138edaef4b15384dd/hovercard\" href=\"https://github.com/UnityStack/DesktopEditors/commit/25efb555c860b82a70fd680138edaef4b15384dd\"><tt>25efb55</tt></a>, <a href=\"https://github.com/UnityStack/DesktopEditors/actions/runs/44001059989\">https://github.com/UnityStack/DesktopEditors/actions/runs/44001059989</a></p>",
+  "public_key": "1UxSz1NTPwqGupGzy53az+6BrIWWkL6WpqruPMC3cnY=",
+  "published": 1794887317,
+  "release_url": "https://github.com/UnityStack/DesktopEditors/releases/tag/v9.3.8-ce",
+  "sha256": "d767d1c969cdb610bef8be2a519abde854a13df2bbebdd749090a796a1f4c7d2",
+  "short_version": "9.3.8",
+  "tag": "v9.3.8-ce",
+  "url": "https://github.com/UnityStack/DesktopEditors/releases/download/v9.3.8-ce/Euro-Office-DesktopEditors-9.3.8-0.ce-macos-arm64.dmg",
+  "version": "903085000"
+}

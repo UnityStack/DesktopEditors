@@ -2,37 +2,37 @@ Acquire-By-Hash: yes
 Architectures: amd64 arm64
 Codename: testing
 Components: main
-Date: Tue, 17 Nov 2026 02:00:36 +0000
+Date: Tue, 17 Nov 2026 03:48:35 +0000
 Description: Euro-Office Community Edition, testing channel (unofficial build by UnityStack GmbH)
 Label: Euro-Office Community Edition
 Origin: euro-office.org
 Suite: testing
 SHA256:
- 5d8ae48aecd555eda0bfe5246729b3deb877fdfe2d3e0af17050440f0738264b             3372 main/binary-amd64/Packages
- 794a39d3ce36c90d64de1c77ffcb7c3d9821538abf10d09c40e6e6083f574e06             1193 main/binary-amd64/Packages.gz
- c5964a2e5307bc9367a298ba0419044424ce1c8760b98bc919e0b06608261e0a             1220 main/binary-amd64/Packages.xz
- b7d984dbc1b6c134cfe0a2f9c0cf3499b057a3a42848fce9e5580a8ce41baeb1             3372 main/binary-arm64/Packages
- e93fb55a7f5a1e01f0fbb9e6af16117e73ebd9413e1e85405b97714354602774             1192 main/binary-arm64/Packages.gz
- 2859d6c0ec74d284e098d0efca9e67a7ac82c1b64f4a977c79805b5a283de525             1224 main/binary-arm64/Packages.xz
- 82bba662bc411866225a28387782c86ffad3929ee23343bb7b9f93d58c4950a7             1567 main/dep11/Components-amd64.yml
- ee7c5e08619f2e5c4bdc550da0dd6efd03b909d65164352570f000f69aee8160              719 main/dep11/Components-amd64.yml.gz
- 82bba662bc411866225a28387782c86ffad3929ee23343bb7b9f93d58c4950a7             1567 main/dep11/Components-arm64.yml
- ee7c5e08619f2e5c4bdc550da0dd6efd03b909d65164352570f000f69aee8160              719 main/dep11/Components-arm64.yml.gz
+ c880fbf0f8a316680843bb7f81afc8f8acc867d572e85414529637afd611efb7             4642 main/binary-amd64/Packages
+ c7174dcfb0477c07a3d15523f64b347657fe58537b55bd4e70348192bcf014a5             1351 main/binary-amd64/Packages.gz
+ d8b483c643f17155613bfaa25a5b2676423e462174b9f2fceb005dd04b1ee6d7             1356 main/binary-amd64/Packages.xz
+ fe4865f45ce7a7f38c0eff39a4d19f0d14b7565851d0953818dae80a4c13a0e9             4642 main/binary-arm64/Packages
+ f5baa98a313b2cb1de684488f7c827a04e0ce2b3f148acbf380837b896582809             1350 main/binary-arm64/Packages.gz
+ 6ec1f5984ae0d75508b7a64d51105eee7a638f1521e1207a64ab7b4d269eda29             1352 main/binary-arm64/Packages.xz
+ 3747606c17e7148dc29df5aa2b325c8641014b7069ed1549550f661f03591f97             1562 main/dep11/Components-amd64.yml
+ 694743b5c6f77d0dd6dd481e5c93f8e2f7ddeb1ee3c8ff230f6f4489b3b3d993              718 main/dep11/Components-amd64.yml.gz
+ 3747606c17e7148dc29df5aa2b325c8641014b7069ed1549550f661f03591f97             1562 main/dep11/Components-arm64.yml
+ 694743b5c6f77d0dd6dd481e5c93f8e2f7ddeb1ee3c8ff230f6f4489b3b3d993              718 main/dep11/Components-arm64.yml.gz
  12927b75a8dd424713eca71b80d8e504f029aa15ae337bc287993cc03f35140a            10240 main/dep11/icons-128x128.tar
  7cf2a06aa14aebda1cadf808caefbe9ce2a7fca97196f05062c3033ec81f9a92             1475 main/dep11/icons-128x128.tar.gz
  10696d16d42677727c9495cace45bc74a886afa74caae6fc8642cb4413909f99            10240 main/dep11/icons-64x64.tar
  e0b9928d8390815f518b0266b13a7e7055dad02440af65d1f054b3be6d7187ee              822 main/dep11/icons-64x64.tar.gz
 SHA512:
- e9c6dcf9f2850728b92ec4fd04aaee12a7d11babb60289b1c0f7d1342104b48e063fe15e65e9519d454b51dd89f29e56f68ad6f82b084469b8057afd6e34df4a             3372 main/binary-amd64/Packages
- 4507c8542f75164f67ae4d61d0761c3d3a08cd3e6059db051fb7d2bc43e362b9193cd854dfb89648a0e919a39480b8e35e153bf729392529742ed8882919272b             1193 main/binary-amd64/Packages.gz
- 5eb5a3499b82841506154a4cd715adcf535e3ca17a5b81602c68c62bde8cc0ad1e59087fb4278cb4cc1a816af053d2fabe87ed64315331f5e4d57dc42ff3d3f1             1220 main/binary-amd64/Packages.xz
- 4c6c9d47b814e4353c1623ba7e399a5db5b0015a6cb3422e769f1b592bceba208f8205135ea4638c042fbf99ccbae25a8f7baf503dfa31753c2d28ba92d0a204             3372 main/binary-arm64/Packages
- 9c91665fd030454100d8681332bcf32c92d96933948a25ebf632c17384a0d84ef9e750df49d673f0d3decd0dd7541c13b6e416b3889c64af49cdcfceb02c1cb8             1192 main/binary-arm64/Packages.gz
- d07d98989ad88809d5438ab183add09e56913f52465aa97b9a68a8036819546ba547dd82e072d10d4a62a405647a7990b36244909991f2f28a9414b7b256bc3f             1224 main/binary-arm64/Packages.xz
- 74b771d9ad53c607a1af47d8a7ac2e149067fd4ac2681c12dc0065b0e630582cb4437f62b08afa8033e2ccdd3b9c78ec415842d0d3d32f7a3351e9577f66b236             1567 main/dep11/Components-amd64.yml
- 88a44990f16689b4b3cba8bf195cae4cf194e6cf65dd0b5f905eaa818a4e303528776992b7ff6ac9588df76e412163799b9508a965213661de52a35910540c43              719 main/dep11/Components-amd64.yml.gz
- 74b771d9ad53c607a1af47d8a7ac2e149067fd4ac2681c12dc0065b0e630582cb4437f62b08afa8033e2ccdd3b9c78ec415842d0d3d32f7a3351e9577f66b236             1567 main/dep11/Components-arm64.yml
- 88a44990f16689b4b3cba8bf195cae4cf194e6cf65dd0b5f905eaa818a4e303528776992b7ff6ac9588df76e412163799b9508a965213661de52a35910540c43              719 main/dep11/Components-arm64.yml.gz
+ d33a648263ec5e992c78c90ab650afaf25e5bd75816e8f1f0d248193377d92a0348b6b108bb7dc6865963cc87bcd94ee0b3ec6ae8d0ee732f9974a0e51567d71             4642 main/binary-amd64/Packages
+ ae8f03fa242f029d5b87de6cdf1fcc43a023d469591436b212d8502dd56568bdf6281141205d67b01d2dc6f2600d8fb44ef76cc80034ac5dca376c8c8216f21c             1351 main/binary-amd64/Packages.gz
+ 4c6107bb0f70b696998a309b55e3e96035e859ff002d19cc76278f27ecb239336a562b3a89a919f9867b91e422af1daf2b75aa88661fd691838c584f9ed7e67d             1356 main/binary-amd64/Packages.xz
+ 212527e09da6f0cd7d00b3d2c096ec3945547446b3ee04177e21ce64f6e1626095d032de2ea531e5746055c8fde2250f95b2bf6937cc4b38d47e274dda455b07             4642 main/binary-arm64/Packages
+ 2b8b282052690d51c397045c3d5c46d8a183b3f2d213cb0ba56e1bcf5e7d9b73c1df69ec269fa76917fedbc672597b6de11c5296a337377232f63831b92761b8             1350 main/binary-arm64/Packages.gz
+ 8a0a85616bcb709d8e7f3a07ba659e65ad019d9f32f1478e2dc24aadbc7564beeeca3dfa3a047105bef3d6d98b8850b78b55ff644e6cea5e43e3cca0adab9cbe             1352 main/binary-arm64/Packages.xz
+ af45bb465d9bb9ab435dd7b3f20a4cdb08ea8c45b7d7ae88eb182bbc79fb53266d8f67ee07b4d9381d1e5bb9f9d369ac818676baddd3189eacbae31db75870e2             1562 main/dep11/Components-amd64.yml
+ 54fb966c2c5b97f538129b51cbbce258a1e4f118c94c6a6d3e17bde6b18c5b026db6d3ed544bece3a83781469fec3c920c14a0481f434664f9bda83367877aa2              718 main/dep11/Components-amd64.yml.gz
+ af45bb465d9bb9ab435dd7b3f20a4cdb08ea8c45b7d7ae88eb182bbc79fb53266d8f67ee07b4d9381d1e5bb9f9d369ac818676baddd3189eacbae31db75870e2             1562 main/dep11/Components-arm64.yml
+ 54fb966c2c5b97f538129b51cbbce258a1e4f118c94c6a6d3e17bde6b18c5b026db6d3ed544bece3a83781469fec3c920c14a0481f434664f9bda83367877aa2              718 main/dep11/Components-arm64.yml.gz
  13fe8909b1ee9a4e086cfa1844025df67885e68899510909b4a968ac4aad91a4a3887f1ef3e76b6a426399a3b16c43b08cb2152757bf2c94f34b8ff0e5111fa4            10240 main/dep11/icons-128x128.tar
  a4966b26ce3c2da65b7c29dbd193700973fee551efcff32c2f6a021b05ccfd5a27a2cf990fa4d74c97b0f65ced5e2041ba9df5f777c0c64d5096012ec2b66833             1475 main/dep11/icons-128x128.tar.gz
  ffc385a490e35d66615f6acd214b604329a8c9befe258b96e108b3e14748cf5ce7280c73fdffea294eeef0baec2254f4ab90ad9eff8187aacc86927167d5a1e2            10240 main/dep11/icons-64x64.tar

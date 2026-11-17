@@ -1,0 +1,49 @@
+---
+Type: "desktop-application"
+ID: "org.euro_office.desktopeditors"
+Package: "euro-office-euro-office"
+Name:
+  C: "Euro-Office"
+Summary:
+  C: "Edit documents, spreadsheets, presentations and PDFs"
+Description:
+  C: "<p>Euro-Office is an office suite for text documents, spreadsheets, presentations, PDFs and PDF forms. It opens and saves Microsoft Office and OpenDocument files and works offline.</p><p>This is the unofficial Community Edition, built and signed by UnityStack GmbH. It is not affiliated with the Euro-Office project.</p>"
+ProjectLicense: "AGPL-3.0-only AND CC-BY-SA-4.0"
+Developer:
+  id: "eu.unitystack"
+  name:
+    C: "UnityStack GmbH"
+DeveloperName:
+  C: "UnityStack GmbH"
+Url:
+  bugtracker: "https://github.com/UnityStack/DesktopEditors/issues"
+  homepage: "https://euro-office.org"
+  vcs-browser: "https://github.com/UnityStack/DesktopEditors"
+Categories:
+- "Office"
+Launchable:
+  desktop-id:
+  - "euro-office-euro-office.desktop"
+Provides:
+  binaries:
+  - "euro-office-euro-office"
+  - "desktopeditors"
+Icon:
+  stock: "euro-office-euro-office"
+  cached:
+  - name: "euro-office-euro-office_euro-office-euro-office.png"
+    width: 64
+    height: 64
+  - name: "euro-office-euro-office_euro-office-euro-office.png"
+    width: 128
+    height: 128
+  remote:
+  - url: "https://packages.unitystack.eu/euro-office/apt/icons/euro-office-256.png"
+    width: 256
+    height: 256
+Releases:
+- version: "9.3.8"
+  type: "stable"
+  unix-timestamp: 1794873600
+ContentRating:
+  oars-1.1: {}
