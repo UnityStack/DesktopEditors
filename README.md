@@ -55,11 +55,40 @@ Take advantage of the powerful editors included in Desktop Editors.
 
 The suite empowers you to create, edit, save, and export text documents, spreadsheets, presentations, PDFs, fill out PDF forms, open diagrams, all while offering additional advanced features such as:
 
-* Connection to the cloud (Moodle, Nextcloud, ownCloud, Seafile, Liferay, kDrive) for real-time collaboration ☁️
+* Connection to the cloud (Nextcloud, openWorkspace, OpenCloud) for real-time collaboration ☁️
 * AI-powered assistants 🤖
 * Digital signatures ✍️🔏
 * Password protection 🔒🔑
 * Scalable UI options (including dark mode 🌓)
+
+## Cloud providers ☁️
+
+**Connect to cloud** on the start page offers these providers:
+
+| Provider | Server requirement |
+| --- | --- |
+| **Nextcloud** | The Euro-Office app installed on the Nextcloud server. |
+| **openWorkspace** | None. UnityStack's OpenCloud-based workspace ships the [OpenCloud Desktop Bridge][bridge] preinstalled. |
+| **OpenCloud** | The [OpenCloud Desktop Bridge][bridge] extension installed on the OpenCloud server, as a web app under `WEB_ASSET_APPS_PATH`. |
+
+OpenCloud opens office files in a way the desktop app cannot see, so a plain OpenCloud server
+connects but never opens a document in an editor tab, and the app does not keep it in the
+Clouds list after a restart. The OpenCloud Desktop Bridge adds **Open in Euro-Office desktop**,
+opens documents in native editor tabs and registers the host in the Clouds list. Only the
+bridge's launcher (`/desktop-bridge/apps/eurooffice/` right after the host) opens as an editor
+tab; other OpenCloud apps that open a new window go to the system browser. The Connect dialog
+shows the same hint with a link when you pick OpenCloud.
+
+Bridge 0.2.0, the current release, lists a host connected with OpenCloud as openWorkspace; it
+works the same. A later bridge release that includes the OpenCloud provider change lists it as
+OpenCloud. The app keeps the provider a host was first connected with; remove the entry and
+connect again to switch.
+
+The provider definitions live in [`build/providers/`](./build/providers) (openWorkspace,
+OpenCloud) and [`desktop-apps`](https://github.com/Euro-Office/desktop-apps/tree/main/common/loginpage/providers/nextcloud) (Nextcloud).
+See [build/README.md](./build/README.md#cloud-providers) for how they are packaged.
+
+[bridge]: https://git.unitystack.org/UnityStack/opencloud-desktop-bridge
 
 ## Localization 🌐
 
