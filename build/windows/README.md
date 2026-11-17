@@ -217,8 +217,9 @@ the winget-pkgs pipeline and moderators have merged it.
 
 - **Identifier `UnityStack.EuroOfficeCommunityEdition`**, publisher
   *UnityStack GmbH*, name *Euro-Office Community Edition*. The first segment
-  names who builds and signs the package. `EuroOffice.DesktopEditors` (the
-  Euro-Office project's package) and `ONLYOFFICE.DesktopEditors` belong to
+  names who builds and signs the package. `EuroOffice.DesktopEditors`
+  (maintained by volunteers, not by the Euro-Office project; it installs the
+  project's unsigned installers) and `ONLYOFFICE.DesktopEditors` belong to
   others. The description says that this is an unofficial community build, not
   affiliated with the Euro-Office project.
 - **Final releases only.** A `vX.Y.Z-ce` tag becomes package version
@@ -308,8 +309,9 @@ If a submitted installer has to change anyway:
 
 ### Note for the winget moderators
 
-winget-pkgs already has `EuroOffice.DesktopEditors`, which installs the Euro-Office
-project's own build, and both builds write the same *Apps & features* entry. The validation
+winget-pkgs already has `EuroOffice.DesktopEditors`, which volunteers outside the Euro-Office
+project submitted (9.3.5.0 in microsoft/winget-pkgs#453509, 9.3.8.0 in #480021). It installs
+the project's unsigned installers from its GitHub releases, and both builds write the same *Apps & features* entry. The validation
 bot will probably not flag the first pull request: it adds `Possible-Duplicate` only when
 another pull request targets the same manifest path or an `InstallerSha256` is already in the
 repository, and the signed installers have hashes of their own. A moderator may still ask
