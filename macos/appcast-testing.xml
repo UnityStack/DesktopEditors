@@ -6,6 +6,24 @@
     <description>Updates of Euro-Office Community Edition for macOS, built and signed by UnityStack GmbH.</description>
     <language>en</language>
     <item>
+      <title>Euro-Office 9.3.8-ce.rc.1</title>
+      <link>https://github.com/UnityStack/DesktopEditors/releases/tag/v9.3.8-ce.rc.1</link>
+      <sparkle:version>903083001</sparkle:version>
+      <sparkle:shortVersionString>9.3.8</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>11.0</sparkle:minimumSystemVersion>
+      <pubDate>Tue, 17 Nov 2026 02:00:37 +0000</pubDate>
+      <description><![CDATA[<p>Community Edition by UnityStack GmbH, release candidate 1 of 9.3.8. It builds upstream Euro-Office v9.3.8; its changes are listed under v9.3.8 below.</p>
+<h3>Changes</h3>
+<ul>
+<li>Based on upstream Euro-Office v9.3.8.</li>
+<li>Linux: the package build follows upstream's new RPM spec; offline help packages are no longer built (upstream's default).</li>
+<li>Linux: the AppStream licence is now <code>AGPL-3.0-only AND CC-BY-SA-4.0</code>, as in upstream's packages.</li>
+<li>macOS: signing in CI accepts Apple's intermediate certificate when the runner already has it.</li>
+</ul>
+<p>Built from <a class="commit-link" data-hovercard-type="commit" data-hovercard-url="https://github.com/UnityStack/DesktopEditors/commit/f31a17510831bf9213d90ba06187c5f8c559e3b2/hovercard" href="https://github.com/UnityStack/DesktopEditors/commit/f31a17510831bf9213d90ba06187c5f8c559e3b2"><tt>f31a175</tt></a>, <a href="https://github.com/UnityStack/DesktopEditors/actions/runs/43850954827">https://github.com/UnityStack/DesktopEditors/actions/runs/43850954827</a></p>]]></description>
+      <enclosure url="https://github.com/UnityStack/DesktopEditors/releases/download/v9.3.8-ce.rc.1/Euro-Office-DesktopEditors-9.3.8-0.ce.rc.1-macos-arm64.dmg" length="708095216" type="application/octet-stream" sparkle:edSignature="0rEZRpEO1tOLiV8TlAI0piuun/Fdk5jTd6QskSr+FVjgywXhChqSFWyFPumYeIUJFhOkb6I9bZD3Hz4tlWy5Dw=="/>
+    </item>
+    <item>
       <title>Euro-Office 9.3.6-ce.rc.2</title>
       <link>https://github.com/UnityStack/DesktopEditors/releases/tag/v9.3.6-ce.rc.2</link>
       <sparkle:version>903063002</sparkle:version>

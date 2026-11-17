@@ -1,0 +1,19 @@
+{
+  "asset": "Euro-Office-DesktopEditors-9.3.8-0.ce.rc.1-macos-arm64.dmg",
+  "bundle_id": "asc.euro-office.Euro-Office",
+  "channel": "prerelease",
+  "ed_signature": "0rEZRpEO1tOLiV8TlAI0piuun/Fdk5jTd6QskSr+FVjgywXhChqSFWyFPumYeIUJFhOkb6I9bZD3Hz4tlWy5Dw==",
+  "feed_url": "https://packages.unitystack.eu/euro-office/macos/appcast-testing.xml",
+  "format": 1,
+  "length": 708095216,
+  "minimum_system_version": "11.0",
+  "notes_html": "<p>Community Edition by UnityStack GmbH, release candidate 1 of 9.3.8. It builds upstream Euro-Office v9.3.8; its changes are listed under v9.3.8 below.</p>\n<h3>Changes</h3>\n<ul>\n<li>Based on upstream Euro-Office v9.3.8.</li>\n<li>Linux: the package build follows upstream's new RPM spec; offline help packages are no longer built (upstream's default).</li>\n<li>Linux: the AppStream licence is now <code>AGPL-3.0-only AND CC-BY-SA-4.0</code>, as in upstream's packages.</li>\n<li>macOS: signing in CI accepts Apple's intermediate certificate when the runner already has it.</li>\n</ul>\n<p>Built from <a class=\"commit-link\" data-hovercard-type=\"commit\" data-hovercard-url=\"https://github.com/UnityStack/DesktopEditors/commit/f31a17510831bf9213d90ba06187c5f8c559e3b2/hovercard\" href=\"https://github.com/UnityStack/DesktopEditors/commit/f31a17510831bf9213d90ba06187c5f8c559e3b2\"><tt>f31a175</tt></a>, <a href=\"https://github.com/UnityStack/DesktopEditors/actions/runs/43850954827\">https://github.com/UnityStack/DesktopEditors/actions/runs/43850954827</a></p>",
+  "public_key": "1UxSz1NTPwqGupGzy53az+6BrIWWkL6WpqruPMC3cnY=",
+  "published": 1794880837,
+  "release_url": "https://github.com/UnityStack/DesktopEditors/releases/tag/v9.3.8-ce.rc.1",
+  "sha256": "adf184e954cc5e4c96fc934a720827b41c2af020e76d62eb77f6a3dfba6755bb",
+  "short_version": "9.3.8",
+  "tag": "v9.3.8-ce.rc.1",
+  "url": "https://github.com/UnityStack/DesktopEditors/releases/download/v9.3.8-ce.rc.1/Euro-Office-DesktopEditors-9.3.8-0.ce.rc.1-macos-arm64.dmg",
+  "version": "903083001"
+}

@@ -2,7 +2,7 @@ Acquire-By-Hash: yes
 Architectures: amd64 arm64
 Codename: stable
 Components: main
-Date: Mon, 16 Nov 2026 07:35:54 +0000
+Date: Tue, 17 Nov 2026 02:00:35 +0000
 Description: Euro-Office Community Edition, stable channel (unofficial build by UnityStack GmbH)
 Label: Euro-Office Community Edition
 Origin: euro-office.org

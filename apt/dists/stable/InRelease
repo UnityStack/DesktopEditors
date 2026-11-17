@@ -5,7 +5,7 @@ Acquire-By-Hash: yes
 Architectures: amd64 arm64
 Codename: stable
 Components: main
-Date: Mon, 16 Nov 2026 07:35:54 +0000
+Date: Tue, 17 Nov 2026 02:00:35 +0000
 Description: Euro-Office Community Edition, stable channel (unofficial build by UnityStack GmbH)
 Label: Euro-Office Community Edition
 Origin: euro-office.org
@@ -42,17 +42,17 @@ SHA512:
  9f607938359ea5f1fcaf3cd28f2f115598e3daab4daf85eee3db70e041d7e2e19c9ede48531100326e7baf6a0c19b5c4c87ac2bb7f5498433f1a1ec4cae7d79f               82 main/dep11/icons-64x64.tar.gz
 -----BEGIN PGP SIGNATURE-----
 
-iQIzBAEBCgAdFiEE6U8JKS/Eahu2OlDkpKZBD4om3MYFAmr6sloACgkQpKZBD4om
-3MY4pBAArXCzgFpJn3jh80kL1MdoX93CmEaooSZoKc1EVv4mk/Dm+2Q/TiSeynbN
-ZxiH/rsW1ZdStbu0SvWK4zblrGhONSijlmdwQE1fGutgCo122RTg18xb/1I5kWrN
-6PgWkA2NV0XSTSXzAOANt+0io0zWtB2+FzBa5LK+I29P97N9j9nzQxWuFc1hK/jd
-CaXVvM0QmT1CMvDsDuWtyluYkOQSj2P+pKB9fpZqgOtiVFKvOh1e3pWWTVV549Cn
-S4AB+JDdTyGe/NZO8Sq6dvflOsIMjbCZHLc463dWINCY4mhYMLXZi3yx0FCkVSG6
-FT2CbRLulDpp8inMA64hzAm1Zi5bif+ubuMVJORcLwRPEa8rTlx1vPTuDqQIcmNw
-7LcpyVLxFFNc6eIEZn6iig996Ipy1P6EwHxGV/AsmCkzx8lJG2vA3EobcpZX6XLg
-dH284kmoj9aOMiXUiYK4IQUJ5pt0NFQQDrflwZt0FyDarT3sz5SR0jipOgN5dqlC
-CldpeQz1FrELK2Vm1KBGDoi/o1HbZCnuqPQNNPpHZNk3Z8Key8gXrAq1WUabalDF
-TkrAud8kPs4FdfNqJ2IT8JMlPkZ6F9wXlRtGzgAaQ5gj2+5dC8wjtIU7TKTKwjyx
-oRSuP6Fl+pAO/mMFR5M6qhNbBMQ+nBmXNmscGEFoX+yPPLvQQpo=
-=xxyZ
+iQIzBAEBCgAdFiEE6U8JKS/Eahu2OlDkpKZBD4om3MYFAmr7tUMACgkQpKZBD4om
+3MZNJw/8CBCSDkzic0+5wrdl/ztIBVc8kUnVx83+KMDGTWP/DqSA6cAxtKvbdcYS
+Er/b7YRf7qvdemsv0swOpCWypGvTXj9Pt0Pii7nf27DA/GV0a22q+l0qMN1KXL2L
+I7RwUvj4hrdFnIuiSF50jnRhaXMNwxzmPjCvlYoeOeN1EUs78Zyyjl03PAx99008
++QaBAXze9+hH0pUdRHbUvgaH9pgi9EXAuR/nQ+tKR+E6X0TSyEmCbpk/grPu5fJ3
+hq9Qc5UfI4Uk7AI6u+1PJhCaF9xV5ymtp9JDowpPBO6MjY/rCOQlxGgIMnPar8gp
+pbWooe8xouEgk8BoXQXlRkIwUMY6KKn9by9v4GJ2r4ngrRg0px64MFHKOtekWn89
+U+90W4GMp8MeMZaonOQWjfCmpQgmrtaIJ0fSnnKG8Faowbqqd9Q9G38j6bb46U6s
+i+0V4AFbzYANhxlda+F8EmxQL+EXGnnlwwirUQXd1AyD2drlh64sCLt77x/3KNb2
+QHjvPPdlR9V4AquhBexlmndLJPAC9srwAGGXtV4SC0hcWalpf7q1CkmvJYcRGg/x
+1Afl79UzfJS08pAcdXbq55+c4PHvhEPxnjg5BklQgYWEIV18ZgjoWNYtDTvCHy9J
+m3G8WgfvMZIZGcGisyVjJA1jOOv9bj8BDd839HfubfElbaRgae4=
+=/N7P
 -----END PGP SIGNATURE-----

@@ -1,6 +1,14 @@
 {
   "releases": [
     {
+      "tag": "v9.3.8-ce.rc.1",
+      "channel": "prerelease",
+      "version": "9.3.8-0~ce~rc.1",
+      "date": "2026-11-17",
+      "apt": true,
+      "rpm": true
+    },
+    {
       "tag": "v9.3.6-ce.rc.2",
       "channel": "prerelease",
       "version": "9.3.6-0~ce~rc.2",

@@ -12,7 +12,7 @@ Summary:
   C: "Edit documents, spreadsheets, presentations and PDFs"
 Description:
   C: "<p>Euro-Office is an office suite for text documents, spreadsheets, presentations, PDFs and PDF forms. It opens and saves Microsoft Office and OpenDocument files and works offline.</p><p>This is the unofficial Community Edition, built and signed by UnityStack GmbH. It is not affiliated with the Euro-Office project.</p>"
-ProjectLicense: "AGPL-3.0-only"
+ProjectLicense: "AGPL-3.0-only AND CC-BY-SA-4.0"
 Developer:
   id: "eu.unitystack"
   name:
@@ -46,7 +46,7 @@ Icon:
     width: 256
     height: 256
 Releases:
-- version: "9.3.6"
+- version: "9.3.8"
   type: "development"
   unix-timestamp: 1794787200
 ContentRating:
