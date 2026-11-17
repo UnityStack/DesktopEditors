@@ -1,5 +1,15 @@
 # Changelog
 
+## v9.3.8-ce
+
+Community Edition by UnityStack GmbH, based on upstream Euro-Office v9.3.8. It contains everything in v9.3.8-ce.rc.1, plus the changes below.
+
+### Changes
+
+* Cloud providers: OpenCloud next to openWorkspace and Nextcloud. Picking it in the Connect dialog shows a hint that the OpenCloud server needs the OpenCloud Desktop Bridge extension.
+* Windows: the final release is published to winget as `UnityStack.EuroOfficeCommunityEdition`.
+* README: a Community Edition section comparing it with upstream, and install instructions for this repository's signed builds and package repositories.
+
 ## v9.3.8-ce.rc.1
 
 Community Edition by UnityStack GmbH, release candidate 1 of 9.3.8. It builds upstream Euro-Office v9.3.8; its changes are listed under v9.3.8 below.

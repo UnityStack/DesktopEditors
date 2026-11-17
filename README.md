@@ -20,7 +20,7 @@ checked on 2026-11-16):
 | macOS updates | none | automatic, with Sparkle; a stable and a testing channel |
 | Linux packages | `.deb`, `.rpm`, `.tar.xz`, not signed; no repository | signed `.rpm`; `.deb` and `.rpm` from signed apt, dnf and zypper repositories |
 | Checksums | none | `SHA256SUMS` files for every platform; the Linux ones signed with OpenPGP |
-| Cloud providers | Nextcloud | Nextcloud and openWorkspace |
+| Cloud providers | Nextcloud | Nextcloud, openWorkspace and OpenCloud (with the OpenCloud Desktop Bridge) |
 
 macOS signing, notarization and automatic updates, the package repositories and the macOS
 checksum file start with v9.3.6-ce.rc.2. The first release candidate, v9.3.6-ce.rc.1, has a
